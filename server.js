@@ -132,15 +132,15 @@ app.use((req, res, next) => {
 // ============================================
 // API ROUTES
 // ============================================
-const authRoutes = require('./src/routes/auth');
-const userRoutes = require('./src/routes/user');
-const workoutRoutes = require('./src/routes/workout');
-const measurementRoutes = require('./src/routes/measurements');
-const goalRoutes = require('./src/routes/goals');
-const nutritionRoutes = require('./src/routes/nutrition');
-const messageRoutes = require('./src/routes/message');
-const testRoutes = require('./src/routes/test');
-const exerciseRoutes = require('./src/routes/exercises');
+const authRoutes = require('./Src/routes/auth');
+const userRoutes = require('./Src/routes/user');
+const workoutRoutes = require('./Src/routes/workout');
+const measurementRoutes = require('./Src/routes/measurements');
+const goalRoutes = require('./Src/routes/goals');
+const nutritionRoutes = require('./Src/routes/nutrition');
+const messageRoutes = require('./Src/routes/message');
+const testRoutes = require('./Src/routes/test');
+const exerciseRoutes = require('./Src/routes/exercises');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
