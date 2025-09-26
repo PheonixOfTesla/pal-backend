@@ -34,7 +34,7 @@ roles: {
         }
         return roles;
     }
-}
+},
   
   // Password Reset
   resetPasswordCode: {
