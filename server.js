@@ -182,7 +182,7 @@ app.get('/api', (req, res) => {
 // ============================================
 // SOCKET.IO HANDLERS
 // ============================================
-require('./src/utils/socketHandlers')(io);
+require('./Src/utils/socketHandlers')(io);
 
 // ============================================
 // ERROR HANDLING
