@@ -132,15 +132,15 @@ app.use((req, res, next) => {
 // ============================================
 // API ROUTES
 // ============================================
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user');
-const workoutRoutes = require('./routes/workout');
-const measurementRoutes = require('./routes/measurements');
-const goalRoutes = require('./routes/goals');
-const nutritionRoutes = require('./routes/nutrition');
-const messageRoutes = require('./routes/message');
-const testRoutes = require('./routes/test');
-const exerciseRoutes = require('./routes/exercises');
+const authRoutes = require('./src/routes/auth');
+const userRoutes = require('./src/routes/user');
+const workoutRoutes = require('./src/routes/workout');
+const measurementRoutes = require('./src/routes/measurements');
+const goalRoutes = require('./src/routes/goals');
+const nutritionRoutes = require('./src/routes/nutrition');
+const messageRoutes = require('./src/routes/message');
+const testRoutes = require('./src/routes/test');
+const exerciseRoutes = require('./src/routes/exercises');
 
 // Mount routes
 app.use('/api/auth', authRoutes);
@@ -182,7 +182,7 @@ app.get('/api', (req, res) => {
 // ============================================
 // SOCKET.IO HANDLERS
 // ============================================
-require('./utils/socketHandlers')(io);
+require('./src/utils/socketHandlers')(io);
 
 // ============================================
 // ERROR HANDLING
