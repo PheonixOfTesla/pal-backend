@@ -22,11 +22,19 @@ const userSchema = new mongoose.Schema({
   },
   
   // Roles
-  roles: {
+  // Change the roles field to accept both string and array
+roles: {
     type: [String],
     enum: ['client', 'specialist', 'admin', 'owner', 'engineer'],
-    default: ['client']
-  },
+    default: ['client'],
+    set: function(roles) {
+        // Handle both string and array inputs
+        if (typeof roles === 'string') {
+            return [roles];
+        }
+        return roles;
+    }
+}
   
   // Password Reset
   resetPasswordCode: {
