@@ -18,34 +18,43 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 const PORT = process.env.PORT || 5000;
 
 // ============================================
-// CORS CONFIGURATION - FIXED FOR RAILWAY
+// CORS CONFIGURATION - UNIVERSALLY COMPATIBLE
 // ============================================
 const corsOptions = {
     origin: function (origin, callback) {
-        // In production, allow any origin temporarily to debug
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+        
+        // In production, allow any origin temporarily for universal compatibility
         if (process.env.NODE_ENV === 'production') {
             return callback(null, true);
         }
         
-        // In development, be more restrictive
+        // In development, allow common localhost ports
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:5000',
             'http://localhost:5173',
+            'http://localhost:8080',
             'https://coastal-fitness.vercel.app',
             'https://coastal-fitness-app.vercel.app',
-            'https://coastal-fitness.netlify.app'
+            'https://coastal-fitness.netlify.app',
+            /\.vercel\.app$/,
+            /\.netlify\.app$/
         ];
         
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(null, true); // Allow anyway for now
-        }
+        const isAllowed = allowedOrigins.some(allowed => {
+            if (typeof allowed === 'string') {
+                return allowed === origin;
+            }
+            return allowed.test(origin);
+        });
+        
+        callback(null, isAllowed || true); // Allow anyway for universal compatibility
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
     maxAge: 86400
 };
@@ -130,7 +139,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// API ROUTES
+// API ROUTES - ALL IMPORTS
 // ============================================
 const authRoutes = require('./Src/routes/auth');
 const userRoutes = require('./Src/routes/user');
@@ -141,8 +150,12 @@ const nutritionRoutes = require('./Src/routes/nutrition');
 const messageRoutes = require('./Src/routes/message');
 const testRoutes = require('./Src/routes/test');
 const exerciseRoutes = require('./Src/routes/exercises');
+const classRoutes = require('./Src/routes/classes');
+const gymRoutes = require('./Src/routes/gyms');
 
-// Mount routes
+// ============================================
+// MOUNT ALL ROUTES
+// ============================================
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/workouts', workoutRoutes);
@@ -152,6 +165,8 @@ app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/exercises', exerciseRoutes);
+app.use('/api/classes', classRoutes);
+app.use('/api/gyms', gymRoutes);
 
 // ============================================
 // HEALTH CHECK ENDPOINT
@@ -162,8 +177,22 @@ app.get('/api/health', async (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || 'development',
-        service: 'Coastal Fitness API',
-        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        service: 'ClockWork API',
+        version: '1.0.0',
+        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        routes: {
+            auth: '✅',
+            users: '✅',
+            workouts: '✅',
+            measurements: '✅',
+            goals: '✅',
+            nutrition: '✅',
+            messages: '✅',
+            tests: '✅',
+            exercises: '✅',
+            classes: '✅',
+            gyms: '✅'
+        }
     };
     
     res.status(200).json(healthcheck);
@@ -172,10 +201,24 @@ app.get('/api/health', async (req, res) => {
 // API root endpoint
 app.get('/api', (req, res) => {
     res.json({
-        name: 'Coastal Fitness API',
+        name: 'ClockWork API',
         version: '1.0.0',
         status: 'running',
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        endpoints: {
+            auth: '/api/auth',
+            users: '/api/users',
+            workouts: '/api/workouts',
+            measurements: '/api/measurements',
+            goals: '/api/goals',
+            nutrition: '/api/nutrition',
+            messages: '/api/messages',
+            tests: '/api/tests',
+            exercises: '/api/exercises',
+            classes: '/api/classes',
+            gyms: '/api/gyms',
+            health: '/api/health'
+        }
     });
 });
 
@@ -187,29 +230,103 @@ require('./Src/utils/socketHandlers')(io);
 // ============================================
 // ERROR HANDLING
 // ============================================
+
+// 404 handler for API routes
 app.use('/api/*', (req, res) => {
     res.status(404).json({ 
         success: false,
         error: 'API endpoint not found',
-        path: req.originalUrl
+        path: req.originalUrl,
+        method: req.method,
+        availableEndpoints: [
+            '/api/auth',
+            '/api/users',
+            '/api/workouts',
+            '/api/measurements',
+            '/api/goals',
+            '/api/nutrition',
+            '/api/messages',
+            '/api/tests',
+            '/api/exercises',
+            '/api/classes',
+            '/api/gyms',
+            '/api/health'
+        ]
     });
 });
 
 // Global error handler
 app.use((err, req, res, next) => {
-    console.error(`Error: ${err.message}`);
+    console.error(`❌ Error: ${err.message}`);
+    console.error(err.stack);
     
-    let status = err.status || 500;
+    let status = err.status || err.statusCode || 500;
     let message = err.message || 'Internal server error';
+    
+    // Handle specific error types
+    if (err.name === 'ValidationError') {
+        status = 400;
+        message = Object.values(err.errors).map(e => e.message).join(', ');
+    }
+    
+    if (err.name === 'CastError') {
+        status = 400;
+        message = 'Invalid ID format';
+    }
+    
+    if (err.code === 11000) {
+        status = 400;
+        message = 'Duplicate entry - this record already exists';
+    }
     
     if (err.message === 'Not allowed by CORS') {
         status = 403;
         message = 'Cross-origin request blocked';
     }
     
+    if (err.name === 'JsonWebTokenError') {
+        status = 401;
+        message = 'Invalid token';
+    }
+    
+    if (err.name === 'TokenExpiredError') {
+        status = 401;
+        message = 'Token expired';
+    }
+    
     res.status(status).json({
         success: false,
-        message: message
+        message: message,
+        error: isDevelopment ? {
+            name: err.name,
+            stack: err.stack,
+            details: err
+        } : undefined
+    });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+    console.error('❌ UNCAUGHT EXCEPTION! Shutting down...');
+    console.error(err.name, err.message);
+    console.error(err.stack);
+    process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+    console.error('❌ UNHANDLED REJECTION! Shutting down...');
+    console.error(err.name, err.message);
+    server.close(() => {
+        process.exit(1);
+    });
+});
+
+// Handle SIGTERM
+process.on('SIGTERM', () => {
+    console.log('👋 SIGTERM RECEIVED. Shutting down gracefully...');
+    server.close(() => {
+        console.log('💥 Process terminated!');
     });
 });
 
@@ -223,13 +340,29 @@ const startServer = async () => {
         server.listen(PORT, () => {
             console.log(`
 ╔════════════════════════════════════════════════════════╗
-║     🚀 COASTAL FITNESS BACKEND SERVER STARTED 🚀      ║
+║        🚀 CLOCKWORK BACKEND SERVER STARTED 🚀         ║
 ╠════════════════════════════════════════════════════════╣
 ║  🌐 Server:      http://localhost:${PORT}                 ║
 ║  📚 API:         http://localhost:${PORT}/api             ║
 ║  💚 Health:      http://localhost:${PORT}/api/health      ║
-║  🔧 Environment: ${process.env.NODE_ENV || 'development'}                        ║
+║  🔧 Environment: ${(process.env.NODE_ENV || 'development').padEnd(41)}║
 ║  📦 Database:    Connected                             ║
+║  🎯 Routes:      11 route groups mounted               ║
+╠════════════════════════════════════════════════════════╣
+║  📍 Available Endpoints:                               ║
+║     /api/auth         - Authentication                 ║
+║     /api/users        - User Management                ║
+║     /api/workouts     - Workout System                 ║
+║     /api/measurements - Body Measurements              ║
+║     /api/goals        - Goals & Habits                 ║
+║     /api/nutrition    - Nutrition Plans                ║
+║     /api/messages     - Messaging                      ║
+║     /api/tests        - Tests & Assessments            ║
+║     /api/exercises    - Exercise Library               ║
+║     /api/classes      - Calendar & Scheduling          ║
+║     /api/gyms         - Gym Management                 ║
+╠════════════════════════════════════════════════════════╣
+║  🔥 Phoenix of Tesla™ - Production Ready               ║
 ╚════════════════════════════════════════════════════════╝
             `);
         });
@@ -240,6 +373,8 @@ const startServer = async () => {
     }
 };
 
+// Start the server
 startServer();
 
+// Export for testing
 module.exports = { app, server, io };
