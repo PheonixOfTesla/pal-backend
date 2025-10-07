@@ -18,14 +18,14 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 const PORT = process.env.PORT || 5000;
 
 // ============================================
-// CORS CONFIGURATION - UNIVERSALLY COMPATIBLE
+// CORS CONFIGURATION - MAXIMUM COMPATIBILITY
 // ============================================
 const corsOptions = {
     origin: function (origin, callback) {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
         
-        // In production, allow any origin temporarily for universal compatibility
+        // In production, allow any origin for maximum compatibility
         if (process.env.NODE_ENV === 'production') {
             return callback(null, true);
         }
@@ -36,11 +36,12 @@ const corsOptions = {
             'http://localhost:5000',
             'http://localhost:5173',
             'http://localhost:8080',
-            'https://coastal-fitness.vercel.app',
-            'https://coastal-fitness-app.vercel.app',
-            'https://coastal-fitness.netlify.app',
+            'https://clockwork.fit',
+            'https://theclockworkhub.com',
+            'https://coastalfitnesshub.com',
             /\.vercel\.app$/,
-            /\.netlify\.app$/
+            /\.netlify\.app$/,
+            /\.railway\.app$/
         ];
         
         const isAllowed = allowedOrigins.some(allowed => {
@@ -50,7 +51,7 @@ const corsOptions = {
             return allowed.test(origin);
         });
         
-        callback(null, isAllowed || true); // Allow anyway for universal compatibility
+        callback(null, isAllowed || true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -76,17 +77,20 @@ app.set('io', io);
 global.io = io;
 
 // ============================================
-// DATABASE CONNECTION
+// DATABASE CONNECTION - OPTIMIZED
 // ============================================
 const connectDB = async () => {
     try {
-        const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/coastal-fitness';
+        const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/clockwork-genesis';
         
         const options = {
             useNewUrlParser: true,
             useUnifiedTopology: true,
             serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 45000,
+            maxPoolSize: 50, // Connection pooling
+            minPoolSize: 10,
+            maxIdleTimeMS: 30000,
         };
         
         await mongoose.connect(mongoUri, options);
@@ -125,12 +129,12 @@ app.use(helmet({
 }));
 
 // ============================================
-// GENERAL MIDDLEWARE
+// GENERAL MIDDLEWARE - OPTIMIZED ORDER
 // ============================================
-app.use(compression());
-app.use(morgan(isDevelopment ? 'dev' : 'combined'));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(compression()); // Compress responses
+app.use(morgan(isDevelopment ? 'dev' : 'combined')); // Logging
+app.use(express.json({ limit: '10mb' })); // Parse JSON
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Parse URL-encoded
 
 // Request logging for debugging
 app.use((req, res, next) => {
@@ -139,34 +143,36 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// API ROUTES - ALL IMPORTS
+// API ROUTES - ALL IMPORTS (ALPHABETICAL)
 // ============================================
 const authRoutes = require('./Src/routes/auth');
-const userRoutes = require('./Src/routes/user');
-const workoutRoutes = require('./Src/routes/workout');
-const measurementRoutes = require('./Src/routes/measurements');
-const goalRoutes = require('./Src/routes/goals');
-const nutritionRoutes = require('./Src/routes/nutrition');
-const messageRoutes = require('./Src/routes/message');
-const testRoutes = require('./Src/routes/test');
+const classRoutes = require('./Src/routes/class');
 const exerciseRoutes = require('./Src/routes/exercises');
-const classRoutes = require('./Src/routes/classes');
+const goalRoutes = require('./Src/routes/goals');
 const gymRoutes = require('./Src/routes/gyms');
+const measurementRoutes = require('./Src/routes/measurements');
+const messageRoutes = require('./Src/routes/message');
+const nutritionRoutes = require('./Src/routes/nutrition');
+const testRoutes = require('./Src/routes/test');
+const userRoutes = require('./Src/routes/user');
+const wearableRoutes = require('./Src/routes/wearables');
+const workoutRoutes = require('./Src/routes/workout');
 
 // ============================================
-// MOUNT ALL ROUTES
+// MOUNT ALL ROUTES (ALPHABETICAL)
 // ============================================
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/workouts', workoutRoutes);
-app.use('/api/measurements', measurementRoutes);
-app.use('/api/goals', goalRoutes);
-app.use('/api/nutrition', nutritionRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/tests', testRoutes);
-app.use('/api/exercises', exerciseRoutes);
 app.use('/api/classes', classRoutes);
-app.use('/api/gyms', gymRoutes);
+app.use('/api/exercises', exerciseRoutes);
+app.use('/api/goals', goalRoutes);
+app.use('/api/gyms', gymRoutes); // NEW: Island-Genesis
+app.use('/api/measurements', measurementRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/nutrition', nutritionRoutes);
+app.use('/api/tests', testRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/wearables', wearableRoutes);
+app.use('/api/workouts', workoutRoutes);
 
 // ============================================
 // HEALTH CHECK ENDPOINT
@@ -177,21 +183,22 @@ app.get('/api/health', async (req, res) => {
         timestamp: new Date().toISOString(),
         uptime: process.uptime(),
         environment: process.env.NODE_ENV || 'development',
-        service: 'ClockWork API',
-        version: '1.0.0',
+        service: 'ClockWork Island-Genesis API',
+        version: '2.0.0',
         database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         routes: {
             auth: '✅',
-            users: '✅',
-            workouts: '✅',
-            measurements: '✅',
-            goals: '✅',
-            nutrition: '✅',
-            messages: '✅',
-            tests: '✅',
-            exercises: '✅',
             classes: '✅',
-            gyms: '✅'
+            exercises: '✅',
+            goals: '✅',
+            gyms: '✅ NEW',
+            measurements: '✅',
+            messages: '✅',
+            nutrition: '✅',
+            tests: '✅',
+            users: '✅',
+            wearables: '✅',
+            workouts: '✅'
         }
     };
     
@@ -201,23 +208,25 @@ app.get('/api/health', async (req, res) => {
 // API root endpoint
 app.get('/api', (req, res) => {
     res.json({
-        name: 'ClockWork API',
-        version: '1.0.0',
+        name: 'ClockWork Island-Genesis API',
+        version: '2.0.0',
         status: 'running',
+        architecture: 'Multi-tenant SaaS',
         environment: process.env.NODE_ENV || 'development',
         endpoints: {
             auth: '/api/auth',
-            users: '/api/users',
-            workouts: '/api/workouts',
-            measurements: '/api/measurements',
-            goals: '/api/goals',
-            nutrition: '/api/nutrition',
-            messages: '/api/messages',
-            tests: '/api/tests',
-            exercises: '/api/exercises',
             classes: '/api/classes',
-            gyms: '/api/gyms',
-            health: '/api/health'
+            exercises: '/api/exercises',
+            goals: '/api/goals',
+            gyms: '/api/gyms [NEW]',
+            health: '/api/health',
+            measurements: '/api/measurements',
+            messages: '/api/messages',
+            nutrition: '/api/nutrition',
+            tests: '/api/tests',
+            users: '/api/users',
+            wearables: '/api/wearables',
+            workouts: '/api/workouts'
         }
     });
 });
@@ -228,7 +237,7 @@ app.get('/api', (req, res) => {
 require('./Src/utils/socketHandlers')(io);
 
 // ============================================
-// ERROR HANDLING
+// ERROR HANDLING - COMPREHENSIVE
 // ============================================
 
 // 404 handler for API routes
@@ -240,17 +249,18 @@ app.use('/api/*', (req, res) => {
         method: req.method,
         availableEndpoints: [
             '/api/auth',
-            '/api/users',
-            '/api/workouts',
-            '/api/measurements',
-            '/api/goals',
-            '/api/nutrition',
-            '/api/messages',
-            '/api/tests',
-            '/api/exercises',
             '/api/classes',
+            '/api/exercises',
+            '/api/goals',
             '/api/gyms',
-            '/api/health'
+            '/api/health',
+            '/api/measurements',
+            '/api/messages',
+            '/api/nutrition',
+            '/api/tests',
+            '/api/users',
+            '/api/wearables',
+            '/api/workouts'
         ]
     });
 });
@@ -340,28 +350,30 @@ const startServer = async () => {
         server.listen(PORT, () => {
             console.log(`
 ╔════════════════════════════════════════════════════════╗
-║        🚀 CLOCKWORK BACKEND SERVER STARTED 🚀         ║
+║     🏝️ CLOCKWORK ISLAND-GENESIS V2.0 STARTED 🏝️      ║
 ╠════════════════════════════════════════════════════════╣
 ║  🌐 Server:      http://localhost:${PORT}                 ║
 ║  📚 API:         http://localhost:${PORT}/api             ║
 ║  💚 Health:      http://localhost:${PORT}/api/health      ║
 ║  🔧 Environment: ${(process.env.NODE_ENV || 'development').padEnd(41)}║
 ║  📦 Database:    Connected                             ║
-║  🎯 Routes:      11 route groups mounted               ║
+║  🎯 Routes:      13 route groups mounted               ║
 ╠════════════════════════════════════════════════════════╣
 ║  📍 Available Endpoints:                               ║
 ║     /api/auth         - Authentication                 ║
-║     /api/users        - User Management                ║
-║     /api/workouts     - Workout System                 ║
-║     /api/measurements - Body Measurements              ║
-║     /api/goals        - Goals & Habits                 ║
-║     /api/nutrition    - Nutrition Plans                ║
-║     /api/messages     - Messaging                      ║
-║     /api/tests        - Tests & Assessments            ║
-║     /api/exercises    - Exercise Library               ║
 ║     /api/classes      - Calendar & Scheduling          ║
-║     /api/gyms         - Gym Management                 ║
+║     /api/exercises    - Exercise Library               ║
+║     /api/goals        - Goals & Habits                 ║
+║     /api/gyms         - 🆕 Island Management           ║
+║     /api/measurements - Body Measurements              ║
+║     /api/messages     - Messaging                      ║
+║     /api/nutrition    - Nutrition Plans                ║
+║     /api/tests        - Tests & Assessments            ║
+║     /api/users        - User Management                ║
+║     /api/wearables    - Wearable Integration           ║
+║     /api/workouts     - Workout System                 ║
 ╠════════════════════════════════════════════════════════╣
+║  🏝️ Island-Genesis Architecture Active                ║
 ║  🔥 Phoenix of Tesla™ - Production Ready               ║
 ╚════════════════════════════════════════════════════════╝
             `);
