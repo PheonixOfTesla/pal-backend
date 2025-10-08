@@ -110,14 +110,14 @@ exports.login = async (req, res) => {
         console.log(`✅ User found: ${user.email}, checking password...`);
         
         // Check password
-        const isValidPassword = await bcrypt.compare(password, user.password);
-        if (!isValidPassword) {
-            console.log(`❌ Invalid password for: ${email}`);
-            return res.status(401).json({ 
-                success: false,
-                message: 'Invalid credentials' 
-            });
-        }
+        const isValidPassword = await user.comparePassword(password);
+if (!isValidPassword) {
+    console.log(`❌ Invalid password for: ${email}`);
+    return res.status(401).json({ 
+        success: false,
+        message: 'Invalid credentials' 
+    });
+}
         
         console.log(`✅ Password valid for: ${email}`);
         
