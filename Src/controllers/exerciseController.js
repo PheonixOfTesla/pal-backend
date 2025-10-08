@@ -22,10 +22,7 @@ exports.getExercises = async (req, res) => {
     const exercises = await Exercise.find(query).sort('name');
     
     // FIXED: Consistent response format
-    res.json({ 
-      success: true,
-      data: exercises 
-    });
+   res.json(exercises);
   } catch (error) {
     res.status(500).json({ 
       success: false,
