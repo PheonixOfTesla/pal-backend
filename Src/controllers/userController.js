@@ -259,8 +259,8 @@ exports.createUser = async (req, res) => {
     };
     
     // Create user (User model pre-save hook will hash password)
-    const user = await User.create(userData);
-    await user.save(); // ✅ This triggers the pre-save hook!
+  const user = new User(userData);
+  await user.save(); // ✅ This triggers the pre-save hook!
     
     // Log creation
     console.log(`✅ User created: ${user.email} (${user.roles.join(', ')})`);
