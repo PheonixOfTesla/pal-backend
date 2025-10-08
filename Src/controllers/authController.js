@@ -47,8 +47,6 @@ exports.register = async (req, res) => {
 
 await user.save();  // The pre-save hook will hash the password
         
-        await user.save();
-        
         // ✅ FIXED: Use 'id' instead of 'userId' for consistency with middleware
         const token = jwt.sign(
             { id: user._id, roles: user.roles },
