@@ -8,19 +8,19 @@ const User = require('../models/User');
 // PROVIDER CONFIGURATIONS - YOUR REAL CREDENTIALS
 // ============================================
 const PROVIDERS = {
-  // ✅ FITBIT - FULLY CONFIGURED (Your credentials from registration)
-  fitbit: {
-    name: 'Fitbit',
-    clientId: '23TKZ3', // YOUR REAL CLIENT ID
-    clientSecret: 'e7d40e8f805e9d0631af7178c0ec1b08', // YOUR REAL SECRET
-    redirectUri: 'https://clockwork.fit/api/wearables/callback/fitbit',
-    authUrl: 'https://www.fitbit.com/oauth2/authorize',
-    tokenUrl: 'https://api.fitbit.com/oauth2/token',
-    apiBase: 'https://api.fitbit.com/1',
-    scope: 'activity heartrate sleep profile weight nutrition',
-    usesOAuth2: true,
-    rateLimit: { requests: 150, window: 3600000 } // 150 req/hour
-  },
+    // ✅ FITBIT - FULLY CONFIGURED (Your credentials from registration)
+    fitbit: {
+        name: 'Fitbit',
+        clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3', // YOUR REAL CLIENT ID
+        clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08', // YOUR REAL SECRET
+        redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/fitbit',
+        authUrl: 'https://www.fitbit.com/oauth2/authorize',
+        tokenUrl: 'https://api.fitbit.com/oauth2/token',
+        apiBase: 'https://api.fitbit.com/1',
+        scope: 'activity heartrate sleep profile weight nutrition',
+        usesOAuth2: true,
+        rateLimit: { requests: 150, window: 3600000 } // 150 req/hour
+    },
   
   // ❌ GARMIN - NEEDS COMPLETION (You started but didn't finish registration)
   garmin: {
@@ -37,18 +37,18 @@ const PROVIDERS = {
   },
   
   // ✅ POLAR - FULLY CONFIGURED (Your credentials from registration)
-  polar: {
-    name: 'Polar',
-    clientId: 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6', // YOUR REAL CLIENT ID
-    clientSecret: '34c2a57a-bbc7-4035-84aa-153db113c809', // YOUR REAL SECRET
-    redirectUri: 'https://clockwork.fit/api/wearables/callback/polar',
-    authUrl: 'https://flow.polar.com/oauth2/authorization',
-    tokenUrl: 'https://polarremote.com/v2/oauth2/token',
-    apiBase: 'https://www.polaraccesslink.com/v3',
-    scope: 'accesslink.read_all',
-    usesOAuth2: true,
-    rateLimit: { requests: 100, window: 3600000 }
-  },
+    polar: {
+        name: 'Polar',
+        clientId: process.env.POLAR_CLIENT_ID || 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6', // YOUR REAL CLIENT ID
+        clientSecret: process.env.POLAR_CLIENT_SECRET || '34c2a57a-bbc7-4035-84aa-153db113c809', // YOUR REAL SECRET
+        redirectUri: process.env.POLAR_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/polar',
+        authUrl: 'https://flow.polar.com/oauth2/authorization',
+        tokenUrl: 'https://polarremote.com/v2/oauth2/token',
+        apiBase: 'https://www.polaraccesslink.com/v3',
+        scope: 'accesslink.read_all',
+        usesOAuth2: true,
+        rateLimit: { requests: 100, window: 3600000 } // 100 req/hour
+    },
   
   // ❌ OURA - NEEDS YOUR FRIEND'S CREDENTIALS (Friend never provided)
   oura: {
