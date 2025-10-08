@@ -1,5 +1,6 @@
 const Exercise = require('../models/Exercise');
 
+// Get all exercises with optional filters
 exports.getExercises = async (req, res) => {
   try {
     const { search, category, equipment, difficulty } = req.query;
@@ -21,9 +22,10 @@ exports.getExercises = async (req, res) => {
     
     const exercises = await Exercise.find(query).sort('name');
     
-    // FIXED: Consistent response format
-   res.json(exercises);
+    // Simple, direct response - just the array
+    res.json(exercises);
   } catch (error) {
+    console.error('Get exercises error:', error);
     res.status(500).json({ 
       success: false,
       message: error.message 
@@ -31,9 +33,11 @@ exports.getExercises = async (req, res) => {
   }
 };
 
+// Get single exercise by ID
 exports.getExerciseById = async (req, res) => {
   try {
     const exercise = await Exercise.findById(req.params.id);
+    
     if (!exercise) {
       return res.status(404).json({ 
         success: false,
@@ -41,12 +45,10 @@ exports.getExerciseById = async (req, res) => {
       });
     }
     
-    // FIXED: Consistent response format
-    res.json({ 
-      success: true,
-      data: exercise 
-    });
+    // Return just the exercise object
+    res.json(exercise);
   } catch (error) {
+    console.error('Get exercise by ID error:', error);
     res.status(500).json({ 
       success: false,
       message: error.message 
@@ -54,19 +56,18 @@ exports.getExerciseById = async (req, res) => {
   }
 };
 
+// Create new exercise
 exports.createExercise = async (req, res) => {
   try {
     const exercise = await Exercise.create({
       ...req.body,
-      createdBy: req.user.id  // FIXED: Use consistent .id
+      createdBy: req.user.id
     });
     
-    // FIXED: Consistent response format
-    res.status(201).json({ 
-      success: true,
-      data: exercise 
-    });
+    // Return the created exercise
+    res.status(201).json(exercise);
   } catch (error) {
+    console.error('Create exercise error:', error);
     res.status(500).json({ 
       success: false,
       message: error.message 
@@ -74,6 +75,7 @@ exports.createExercise = async (req, res) => {
   }
 };
 
+// Update exercise
 exports.updateExercise = async (req, res) => {
   try {
     const exercise = await Exercise.findByIdAndUpdate(
@@ -89,12 +91,10 @@ exports.updateExercise = async (req, res) => {
       });
     }
     
-    // FIXED: Consistent response format
-    res.json({ 
-      success: true,
-      data: exercise 
-    });
+    // Return updated exercise
+    res.json(exercise);
   } catch (error) {
+    console.error('Update exercise error:', error);
     res.status(500).json({ 
       success: false,
       message: error.message 
@@ -102,6 +102,7 @@ exports.updateExercise = async (req, res) => {
   }
 };
 
+// Delete exercise
 exports.deleteExercise = async (req, res) => {
   try {
     const exercise = await Exercise.findByIdAndDelete(req.params.id);
@@ -113,13 +114,13 @@ exports.deleteExercise = async (req, res) => {
       });
     }
     
-    // FIXED: Consistent response format
+    // Return success message
     res.json({ 
       success: true,
-      message: 'Exercise deleted successfully',
-      data: exercise 
+      message: 'Exercise deleted successfully'
     });
   } catch (error) {
+    console.error('Delete exercise error:', error);
     res.status(500).json({ 
       success: false,
       message: error.message 
@@ -127,7 +128,7 @@ exports.deleteExercise = async (req, res) => {
   }
 };
 
-// Get exercises by muscle group with variations
+// Get related exercises by muscle group
 exports.getRelatedExercises = async (req, res) => {
   try {
     const exercise = await Exercise.findById(req.params.id);
@@ -148,12 +149,10 @@ exports.getRelatedExercises = async (req, res) => {
       ]
     }).limit(6);
     
-    // FIXED: Consistent response format
-    res.json({ 
-      success: true,
-      data: related 
-    });
+    // Return array of related exercises
+    res.json(related);
   } catch (error) {
+    console.error('Get related exercises error:', error);
     res.status(500).json({ 
       success: false,
       message: error.message 
