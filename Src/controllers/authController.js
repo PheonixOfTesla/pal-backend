@@ -204,8 +204,8 @@ exports.resetPasswordRequest = async (req, res) => {
             });
         }
         
-        // Generate 6-digit code
-        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+        // Generate 3-digit code
+        const resetCode = Math.floor(100 + Math.random() * 900).toString();
         const resetToken = crypto.createHash('sha256').update(resetCode).digest('hex');
         
         user.resetPasswordCode = resetToken;
