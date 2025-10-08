@@ -1,4 +1,4 @@
-// Src/controllers/userController.js - ULTIMATE GENIUS VERSION
+// Src/controllers/userController.js - FIXED VERSION
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 
@@ -36,14 +36,6 @@ const validateRoles = (roles) => {
 };
 
 /**
- * Hash password with consistent salt rounds
- */
-const hashPassword = async (password) => {
-  const salt = await bcrypt.genSalt(10);
-  return await bcrypt.hash(password, salt);
-};
-
-/**
  * Clean user object for response (remove sensitive data)
  */
 const cleanUserData = (user) => {
@@ -60,22 +52,6 @@ const cleanUserData = (user) => {
   userObj.userId = userObj._id.toString();
   
   return userObj;
-};
-
-/**
- * Invalidate ClientManager cache after user changes
- */
-const invalidateClientCache = async () => {
-  try {
-    // Reset ClientManager if it exists globally
-    if (global.ClientManager) {
-      global.ClientManager.loaded = false;
-      global.ClientManager.clients = [];
-    }
-  } catch (error) {
-    console.error('Cache invalidation warning:', error);
-    // Don't throw - this is non-critical
-  }
 };
 
 /**
@@ -244,6 +220,7 @@ exports.getAllUsers = async (req, res) => {
 /**
  * POST /api/users
  * Create new user (admin/owner only)
+ * ✅ FIXED: Let User model handle password hashing
  */
 exports.createUser = async (req, res) => {
   try {
@@ -268,27 +245,21 @@ exports.createUser = async (req, res) => {
       return errorResponse(res, 'Password must be at least 6 characters long', 400);
     }
     
-    // Hash password
-    const hashedPassword = await hashPassword(password);
-    
     // Validate and normalize roles
     const validatedRoles = validateRoles(roles || ['client']);
     
-    // Create user object
+    // ✅ FIXED: DO NOT hash password here - let User model do it
     const userData = {
       name: name.trim(),
       email: normalizedEmail,
-      password: hashedPassword,
+      password: password, // ✅ Plain password - model will hash it
       roles: validatedRoles,
       isActive: true,
       ...otherFields
     };
     
-    // Create user
+    // Create user (User model pre-save hook will hash password)
     const user = await User.create(userData);
-    
-    // Invalidate cache
-    await invalidateClientCache();
     
     // Log creation
     console.log(`✅ User created: ${user.email} (${user.roles.join(', ')})`);
@@ -334,11 +305,12 @@ exports.updateUser = async (req, res) => {
     }
     
     // Handle password update separately
+    // ✅ FIXED: Don't hash here - let model do it
     if (updates.password) {
       if (updates.password.length < 6) {
         return errorResponse(res, 'Password must be at least 6 characters long', 400);
       }
-      updates.password = await hashPassword(updates.password);
+      // Password will be hashed by User model pre-save hook
     }
     
     // Normalize email if being updated
@@ -371,11 +343,6 @@ exports.updateUser = async (req, res) => {
       updates,
       { new: true, runValidators: true }
     ).select('-password');
-    
-    // Invalidate cache if roles changed (affects client lists)
-    if (updates.roles) {
-      await invalidateClientCache();
-    }
     
     console.log(`✅ User updated: ${user.email}`);
     
@@ -418,9 +385,6 @@ exports.deleteUser = async (req, res) => {
     if (!user) {
       return errorResponse(res, 'User not found', 404);
     }
-    
-    // Invalidate cache
-    await invalidateClientCache();
     
     console.log(`🗑️ User deleted: ${user.email}`);
     
@@ -565,3 +529,5 @@ exports.unassignClientFromSpecialist = async (req, res) => {
     return errorResponse(res, 'Failed to unassign client', 500, error);
   }
 };
+
+module.exports = exports;
