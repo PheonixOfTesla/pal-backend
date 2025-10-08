@@ -4,34 +4,51 @@ const { protect } = require('../middleware/auth');
 const { checkRole } = require('../middleware/roleCheck');
 const wearableController = require('../controllers/wearableController');
 
-// Get wearable data
+// ============================================
+// WEARABLE DATA ROUTES
+// ============================================
+
+// Get wearable data for a user
 router.get('/user/:userId', protect, wearableController.getWearableData);
 
-// Manual entry
+// Get user insights (averages, trends)
+router.get('/insights/:userId', protect, wearableController.getInsights);
+
+// Manual entry for users without wearables
 router.post('/user/:userId/manual', protect, wearableController.manualEntry);
 
-// Get connections
+// ============================================
+// CONNECTION MANAGEMENT
+// ============================================
+
+// Get all wearable connections for current user
 router.get('/connections', protect, wearableController.getConnections);
 
-// OAuth flow
-router.get('/connect/:provider', protect, (req, res) => {
-    // Redirect to provider's OAuth page
-    const { provider } = req.params;
-    const redirectUri = `${process.env.API_URL}/api/wearables/callback/${provider}`;
-    
-    // Provider-specific OAuth URLs would go here
-    res.redirect(`https://oauth.provider.com/authorize?redirect_uri=${redirectUri}`);
-});
-
-router.get('/callback/:provider', wearableController.oauthCallback);
-
-// Disconnect
+// Disconnect a wearable
 router.delete('/disconnect/:provider', protect, wearableController.disconnect);
 
-// Sync
-router.post('/sync/:provider', protect, wearableController.syncNow);
+// ============================================
+// OAUTH 2.0 FLOW (Fitbit, Polar, Oura, Whoop)
+// ============================================
 
-// Insights
-router.get('/insights/:userId', protect, wearableController.getInsights);
+// Initiate OAuth connection (returns authUrl for frontend to redirect)
+router.post('/connect/:provider', protect, wearableController.initiateOAuth2);
+
+// OAuth callback (provider redirects here after user authorizes)
+router.get('/callback/:provider', wearableController.handleOAuth2Callback);
+
+// ============================================
+// OAUTH 1.0a FLOW (Garmin) - Coming Soon
+// ============================================
+
+// Initiate Garmin OAuth (OAuth 1.0a)
+router.post('/connect/garmin', protect, wearableController.initiateGarminOAuth);
+
+// ============================================
+// DATA SYNCING
+// ============================================
+
+// Manually trigger sync for a provider
+router.post('/sync/:provider', protect, wearableController.syncWearableData);
 
 module.exports = router;
