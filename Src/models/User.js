@@ -17,7 +17,9 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: function() {
+    return this.isNew; // Only required when creating new users
+  },
     minlength: 6
   },
   
