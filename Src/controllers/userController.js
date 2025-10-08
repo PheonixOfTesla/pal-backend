@@ -1,4 +1,4 @@
-// Src/controllers/userController.js - FIXED VERSION
+// Src/controllers/userController.js - COMPLETE & OPTIMIZED VERSION
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 
@@ -403,7 +403,7 @@ exports.deleteUser = async (req, res) => {
 };
 
 /**
- * GET /api/users/clients/specialist/:specialistId
+ * GET /api/users/specialist/:specialistId/clients
  * Get all clients assigned to a specialist
  */
 exports.getClientsBySpecialist = async (req, res) => {
@@ -428,6 +428,7 @@ exports.getClientsBySpecialist = async (req, res) => {
 /**
  * POST /api/users/assign-client
  * Assign client to specialist
+ * ✅ ENHANCED: Added client role validation
  */
 exports.assignClientToSpecialist = async (req, res) => {
   try {
@@ -449,6 +450,11 @@ exports.assignClientToSpecialist = async (req, res) => {
     
     if (!specialist) {
       return errorResponse(res, 'Specialist not found', 404);
+    }
+    
+    // ✅ NEW: Verify client has client role
+    if (!client.roles.includes('client')) {
+      return errorResponse(res, 'Target user is not a client', 400);
     }
     
     // Verify specialist has specialist role
