@@ -36,17 +36,16 @@ exports.register = async (req, res) => {
             });
         }
         
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
         
-        // Create user
         const user = new User({
-            name,
-            email: email.toLowerCase(),
-            password: hashedPassword,
-            roles: roles || ['client'],
-            gymId: gymId || null
-        });
+    name,
+    email: email.toLowerCase(),
+    password: password,  // Plain password - let the model hash it
+    roles: roles || ['client'],
+    gymId: gymId || null
+});
+
+await user.save();  // The pre-save hook will hash the password
         
         await user.save();
         
