@@ -1,7 +1,7 @@
 {
-  "name": "coastal-fitness-backend",
+  "name": "clockwork-backend",
   "version": "1.0.0",
-  "description": "Coastal Fitness & Correction Backend API",
+  "description": "ClockWork Fitness Backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -17,7 +17,7 @@
     "express",
     "mongodb"
   ],
-  "author": "Coastal Fitness",
+  "author": "ClockWork",
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
@@ -30,7 +30,9 @@
     "compression": "^1.7.4",
     "morgan": "^1.10.0",
     "socket.io": "^4.5.4",
-    "resend": "^1.1.0"
+    "resend": "^1.1.0",
+    "axios": "^1.6.2",
+    "oauth-1.0a": "^2.2.6"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
