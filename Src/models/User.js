@@ -1,3 +1,4 @@
+// Src/models/User.js - FIXED VERSION WITH AUTO-CREATION
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -15,19 +16,18 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     trim: true
   },
- password: {
-  type: String,
-  required: function() {
-    return this.isNew;
-  },
-  validate: {
-    validator: function(v) {
-      // If password is provided, it must be at least 6 characters
-      return !v || v.length >= 6;
+  password: {
+    type: String,
+    required: function() {
+      return this.isNew;
     },
-    message: 'Password must be at least 6 characters long'
-  }
-},
+    validate: {
+      validator: function(v) {
+        return !v || v.length >= 6;
+      },
+      message: 'Password must be at least 6 characters long'
+    }
+  },
   
   // Roles
   roles: {
@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema({
     index: true
   },
   
-  // Multi-Gym Access (for specialists working at multiple locations)
+  // Multi-Gym Access
   additionalGymIds: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Gym'
@@ -83,24 +83,29 @@ const userSchema = new mongoose.Schema({
     type: Date
   },
   height: {
-    type: Number // in inches
+    type: Number
   },
   
-  // Wearable Connections
-  wearableConnections: [{
-    provider: {
-      type: String,
-      enum: ['fitbit', 'apple', 'garmin', 'whoop', 'oura', 'polar']
-    },
-    connected: {
-      type: Boolean,
-      default: false
-    },
-    accessToken: String,
-    refreshToken: String,
-    lastSync: Date,
-    scopes: [String]
-  }],
+  // ✅ FIXED: Wearable Connections with DEFAULT VALUE
+  wearableConnections: {
+    type: [{
+      provider: {
+        type: String,
+        enum: ['fitbit', 'apple', 'garmin', 'whoop', 'oura', 'polar']
+      },
+      connected: {
+        type: Boolean,
+        default: false
+      },
+      accessToken: String,
+      refreshToken: String,
+      expiresAt: Date,
+      externalUserId: String,
+      lastSync: Date,
+      scopes: [String]
+    }],
+    default: [] // ✅ THIS FIXES THE 404 ERROR
+  },
   
   // Timestamps
   lastLogin: {
@@ -114,45 +119,49 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for performance
+// Indexes
 userSchema.index({ email: 1 });
 userSchema.index({ gymId: 1, roles: 1 });
 userSchema.index({ specialistIds: 1 });
 userSchema.index({ clientIds: 1 });
 
-// Hash password before saving
+// ✅ ENHANCED: Ensure wearableConnections exists on save
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
+  // Hash password if modified
+  if (this.isModified('password')) {
+    try {
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(this.password, salt);
+    } catch (error) {
+      return next(error);
+    }
   }
+  
+  // ✅ ENSURE wearableConnections is initialized
+  if (!this.wearableConnections) {
+    this.wearableConnections = [];
+  }
+  
+  next();
 });
 
-// Compare password method
+// Compare password
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Check if user has access to a specific gym
+// Check gym access
 userSchema.methods.hasAccessToGym = function(gymId) {
   const gymIdStr = gymId.toString();
   
-  // Primary gym
   if (this.gymId && this.gymId.toString() === gymIdStr) {
     return true;
   }
   
-  // Additional gyms (for specialists)
   if (this.additionalGymIds && this.additionalGymIds.length > 0) {
     return this.additionalGymIds.some(id => id.toString() === gymIdStr);
   }
   
-  // Engineers and platform owners can access all gyms
   if (this.roles.includes('engineer') || this.roles.includes('owner')) {
     return true;
   }
@@ -160,7 +169,7 @@ userSchema.methods.hasAccessToGym = function(gymId) {
   return false;
 };
 
-// Get all gyms user has access to
+// Get accessible gym IDs
 userSchema.methods.getAccessibleGymIds = function() {
   const gymIds = [];
   
@@ -175,18 +184,30 @@ userSchema.methods.getAccessibleGymIds = function() {
   return gymIds;
 };
 
-// Check if user is platform admin
+// Check platform admin
 userSchema.methods.isPlatformAdmin = function() {
   return this.roles.includes('engineer') || this.roles.includes('owner');
 };
 
-// Remove sensitive data when converting to JSON
+// ✅ FIXED: Ensure wearableConnections is always an array in JSON
 userSchema.methods.toJSON = function() {
   const obj = this.toObject();
   delete obj.password;
   delete obj.resetPasswordCode;
   delete obj.resetPasswordExpires;
-  delete obj.wearableConnections; // Don't expose tokens
+  
+  // ✅ Ensure wearableConnections exists
+  if (!obj.wearableConnections) {
+    obj.wearableConnections = [];
+  }
+  
+  // Don't expose tokens in regular JSON
+  obj.wearableConnections = obj.wearableConnections.map(conn => ({
+    provider: conn.provider,
+    connected: conn.connected,
+    lastSync: conn.lastSync
+  }));
+  
   return obj;
 };
 
