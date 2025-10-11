@@ -528,7 +528,7 @@ const handleOAuth2Callback = async (req, res) => {
 
     console.log('✅ Tokens stored');
 
-    res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/settings/wearables?success=${provider}`);
+  res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
   } catch (error) {
     console.error('❌ OAuth callback error:', error.response?.data || error.message);
     res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/settings/wearables?error=auth_failed`);
