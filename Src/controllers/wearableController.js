@@ -1,6 +1,6 @@
-// Src/controllers/wearableController.js - COMPLETE WITH SAFETY CHECKS
 const crypto = require('crypto');
 const axios = require('axios');
+const OAuth = require('oauth-1.0a');
 const WearableData = require('../models/WearableData');
 const User = require('../models/User');
 
@@ -8,24 +8,24 @@ const User = require('../models/User');
 // PROVIDER CONFIGURATIONS - YOUR REAL CREDENTIALS
 // ============================================
 const PROVIDERS = {
-  // ✅ FITBIT - FULLY CONFIGURED
-  fitbit: {
-    name: 'Fitbit',
-    clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3',
-    clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08',
-  redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://cwbackend-production-314e.up.railway.app/api/wearables/callback/fitbit',
-    authUrl: 'https://www.fitbit.com/oauth2/authorize',
-    tokenUrl: 'https://api.fitbit.com/oauth2/token',
-    apiBase: 'https://api.fitbit.com/1',
-    scope: 'activity heartrate sleep profile weight nutrition',
-    usesOAuth2: true,
-    rateLimit: { requests: 150, window: 3600000 }
-  },
+    // ✅ FITBIT - FULLY CONFIGURED (Your credentials from registration)
+    fitbit: {
+        name: 'Fitbit',
+        clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3', // YOUR REAL CLIENT ID
+        clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08', // YOUR REAL SECRET
+        redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/fitbit',
+        authUrl: 'https://www.fitbit.com/oauth2/authorize',
+        tokenUrl: 'https://api.fitbit.com/oauth2/token',
+        apiBase: 'https://api.fitbit.com/1',
+        scope: 'activity heartrate sleep profile weight nutrition',
+        usesOAuth2: true,
+        rateLimit: { requests: 150, window: 3600000 } // 150 req/hour
+    },
   
-  // ❌ GARMIN - NEEDS COMPLETION
+  // ❌ GARMIN - NEEDS COMPLETION (You started but didn't finish registration)
   garmin: {
     name: 'Garmin',
-    clientId: process.env.GARMIN_CONSUMER_KEY || null,
+    clientId: process.env.GARMIN_CONSUMER_KEY || null, // GET THIS FROM: https://developer.garmin.com/
     clientSecret: process.env.GARMIN_CONSUMER_SECRET || null,
     redirectUri: 'https://clockwork.fit/api/wearables/callback/garmin',
     requestTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/request_token',
@@ -36,24 +36,24 @@ const PROVIDERS = {
     rateLimit: { requests: 200, window: 3600000 }
   },
   
-  // ✅ POLAR - FULLY CONFIGURED
-  polar: {
-    name: 'Polar',
-    clientId: process.env.POLAR_CLIENT_ID || 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6',
-    clientSecret: process.env.POLAR_CLIENT_SECRET || '34c2a57a-bbc7-4035-84aa-153db113c809',
-    redirectUri: process.env.POLAR_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/polar',
-    authUrl: 'https://flow.polar.com/oauth2/authorization',
-    tokenUrl: 'https://polarremote.com/v2/oauth2/token',
-    apiBase: 'https://www.polaraccesslink.com/v3',
-    scope: 'accesslink.read_all',
-    usesOAuth2: true,
-    rateLimit: { requests: 100, window: 3600000 }
-  },
+  // ✅ POLAR - FULLY CONFIGURED (Your credentials from registration)
+    polar: {
+        name: 'Polar',
+        clientId: process.env.POLAR_CLIENT_ID || 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6', // YOUR REAL CLIENT ID
+        clientSecret: process.env.POLAR_CLIENT_SECRET || '34c2a57a-bbc7-4035-84aa-153db113c809', // YOUR REAL SECRET
+        redirectUri: process.env.POLAR_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/polar',
+        authUrl: 'https://flow.polar.com/oauth2/authorization',
+        tokenUrl: 'https://polarremote.com/v2/oauth2/token',
+        apiBase: 'https://www.polaraccesslink.com/v3',
+        scope: 'accesslink.read_all',
+        usesOAuth2: true,
+        rateLimit: { requests: 100, window: 3600000 } // 100 req/hour
+    },
   
-  // ❌ OURA - NEEDS CREDENTIALS
+  // ❌ OURA - NEEDS YOUR FRIEND'S CREDENTIALS (Friend never provided)
   oura: {
     name: 'Oura',
-    clientId: process.env.OURA_CLIENT_ID || null,
+    clientId: process.env.OURA_CLIENT_ID || null, // ASK FRIEND TO GET FROM: https://cloud.ouraring.com/oauth/applications
     clientSecret: process.env.OURA_CLIENT_SECRET || null,
     redirectUri: 'https://clockwork.fit/api/wearables/callback/oura',
     authUrl: 'https://cloud.ouraring.com/oauth/authorize',
@@ -61,13 +61,13 @@ const PROVIDERS = {
     apiBase: 'https://api.ouraring.com/v2',
     scope: 'daily heartrate workout session',
     usesOAuth2: true,
-    rateLimit: { requests: 5000, window: 86400000 }
+    rateLimit: { requests: 5000, window: 86400000 } // 5k/day
   },
 
-  // ❌ WHOOP - NEEDS MEMBERSHIP
+  // ❌ WHOOP - NEEDS $239/YEAR MEMBERSHIP (Not registered)
   whoop: {
     name: 'WHOOP',
-    clientId: process.env.WHOOP_CLIENT_ID || null,
+    clientId: process.env.WHOOP_CLIENT_ID || null, // REQUIRES ACTIVE WHOOP MEMBERSHIP
     clientSecret: process.env.WHOOP_CLIENT_SECRET || null,
     redirectUri: 'https://clockwork.fit/api/wearables/callback/whoop',
     authUrl: 'https://api.prod.whoop.com/oauth/oauth2/auth',
@@ -80,14 +80,14 @@ const PROVIDERS = {
 };
 
 // ============================================
-// IN-MEMORY CACHES
+// IN-MEMORY CACHES (Use Redis in production)
 // ============================================
 const oauthStates = new Map();
 const tokenCache = new Map();
 const rateLimitTracker = new Map();
 
 // ============================================
-// UTILITY FUNCTIONS
+// UTILITY FUNCTIONS - DRY & REUSABLE
 // ============================================
 
 const generateState = () => crypto.randomBytes(32).toString('hex');
@@ -177,30 +177,14 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
   return instance;
 };
 
-// ✅ NEW: ENSURE WEARABLE CONNECTIONS EXIST
-const ensureWearableConnections = async (userId) => {
-  const user = await User.findById(userId);
-  
-  if (!user) {
-    throw new Error('User not found');
-  }
-  
-  if (!user.wearableConnections || !Array.isArray(user.wearableConnections)) {
-    console.log(`⚠️  Initializing wearableConnections for user ${userId}`);
-    user.wearableConnections = [];
-    await user.save();
-  }
-  
-  return user;
-};
-
 // ============================================
-// DATABASE OPERATIONS (ENHANCED)
+// DATABASE OPERATIONS
 // ============================================
 
 const storeWearableTokens = async (userId, provider, tokens) => {
   try {
-    const user = await ensureWearableConnections(userId);
+    const user = await User.findById(userId);
+    if (!user) throw new Error('User not found');
 
     const connectionIndex = user.wearableConnections.findIndex(
       conn => conn.provider === provider
@@ -240,7 +224,8 @@ const getWearableConnection = async (userId, provider) => {
     return tokenCache.get(cacheKey);
   }
 
-  const user = await ensureWearableConnections(userId);
+  const user = await User.findById(userId);
+  if (!user) return null;
 
   const connection = user.wearableConnections.find(
     conn => conn.provider === provider
@@ -376,7 +361,7 @@ const handleOAuth2Callback = async (req, res) => {
 };
 
 // ============================================
-// DATA FETCHING - FITBIT
+// DATA FETCHING - FITBIT (FULLY WORKING)
 // ============================================
 
 const fetchFitbitData = async (accessToken, startDate, endDate) => {
@@ -413,7 +398,7 @@ const fetchFitbitData = async (accessToken, startDate, endDate) => {
 };
 
 // ============================================
-// DATA FETCHING - POLAR
+// DATA FETCHING - POLAR (FULLY WORKING)
 // ============================================
 
 const fetchPolarData = async (accessToken, userId) => {
@@ -590,12 +575,12 @@ const syncWearableData = async (req, res) => {
 };
 
 // ============================================
-// USER-FACING ENDPOINTS (ENHANCED)
+// USER-FACING ENDPOINTS
 // ============================================
 
 const getConnections = async (req, res) => {
   try {
-    const user = await ensureWearableConnections(req.user.id);
+    const user = await User.findById(req.user.id);
     
     const connections = user.wearableConnections.map(conn => ({
       provider: conn.provider,
@@ -609,7 +594,6 @@ const getConnections = async (req, res) => {
       connections 
     });
   } catch (error) {
-    console.error('Get connections error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch connections' 
@@ -642,7 +626,6 @@ const getWearableData = async (req, res) => {
       data 
     });
   } catch (error) {
-    console.error('Get wearable data error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch wearable data' 
@@ -667,7 +650,6 @@ const manualEntry = async (req, res) => {
       data: wearableData 
     });
   } catch (error) {
-    console.error('Manual entry error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to save manual entry' 
@@ -678,8 +660,9 @@ const manualEntry = async (req, res) => {
 const disconnect = async (req, res) => {
   try {
     const { provider } = req.params;
-    const user = await ensureWearableConnections(req.user.id);
+    const userId = req.user.id;
 
+    const user = await User.findById(userId);
     const connectionIndex = user.wearableConnections.findIndex(
       conn => conn.provider === provider
     );
@@ -688,7 +671,7 @@ const disconnect = async (req, res) => {
       user.wearableConnections.splice(connectionIndex, 1);
       await user.save();
       
-      tokenCache.delete(`${req.user.id}:${provider}`);
+      tokenCache.delete(`${userId}:${provider}`);
     }
 
     res.json({ 
@@ -696,7 +679,6 @@ const disconnect = async (req, res) => {
       message: `${PROVIDERS[provider]?.name || provider} disconnected` 
     });
   } catch (error) {
-    console.error('Disconnect error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to disconnect wearable' 
@@ -738,7 +720,6 @@ const getInsights = async (req, res) => {
       insights 
     });
   } catch (error) {
-    console.error('Get insights error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to generate insights' 
