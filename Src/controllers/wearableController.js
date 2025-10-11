@@ -13,7 +13,7 @@ const PROVIDERS = {
     name: 'Fitbit',
     clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3',
     clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08',
-    redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/fitbit',
+  redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://cwbackend-production-314e.up.railway.app/api/wearables/callback/fitbit',
     authUrl: 'https://www.fitbit.com/oauth2/authorize',
     tokenUrl: 'https://api.fitbit.com/oauth2/token',
     apiBase: 'https://api.fitbit.com/1',
