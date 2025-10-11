@@ -474,13 +474,13 @@ const handleOAuth2Callback = async (req, res) => {
 
     if (error) {
       console.error('❌ OAuth Error:', error);
-      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/settings/wearables?error=${error}`);
+     res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}?wearable_connected=${provider}`);
     }
 
     const stateData = await verifyState(state);
     if (!stateData) {
       console.error('❌ Invalid state');
-      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/settings/wearables?error=invalid_state`);
+     return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}?wearable_error=${error}`);
     }
 
     console.log('✅ State verified');
