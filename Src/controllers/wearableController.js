@@ -474,13 +474,13 @@ const handleOAuth2Callback = async (req, res) => {
 
     if (error) {
       console.error('❌ OAuth Error:', error);
-     res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}?wearable_connected=${provider}`);
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=oauth_error`);
     }
 
     const stateData = await verifyState(state);
     if (!stateData) {
       console.error('❌ Invalid state');
-     return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}?wearable_error=${error}`);
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=invalid_state`);
     }
 
     console.log('✅ State verified');
@@ -528,10 +528,10 @@ const handleOAuth2Callback = async (req, res) => {
 
     console.log('✅ Tokens stored');
 
-  res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
+    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
   } catch (error) {
     console.error('❌ OAuth callback error:', error.response?.data || error.message);
-    res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/settings/wearables?error=auth_failed`);
+    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=auth_failed`);
   }
 };
 
