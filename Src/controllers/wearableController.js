@@ -461,6 +461,7 @@ const initiateOAuth2 = async (req, res) => {
       redirect_uri: config.redirectUri,
       scope: config.scope,
       state: state
+      prompt: 'login consent'
     };
     
     if (config.usesPKCE && codeChallenge) {
