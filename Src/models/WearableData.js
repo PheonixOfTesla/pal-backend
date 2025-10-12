@@ -28,23 +28,27 @@ const wearableDataSchema = new mongoose.Schema({
     restingHeartRate: { type: Number },
     averageHeartRate: { type: Number },
     maxHeartRate: { type: Number },
-    heartRateZones: {
-        fat_burn: { type: Number, default: 0 }, // minutes
-        cardio: { type: Number, default: 0 },
-        peak: { type: Number, default: 0 }
-    },
+    heartRateZones: [{
+        name: String,
+        min: Number,
+        max: Number,
+        minutes: Number
+    }],
     
     // Sleep
     sleepDuration: { type: Number }, // in minutes
     deepSleep: { type: Number },
     lightSleep: { type: Number },
     remSleep: { type: Number },
-    sleepScore: { type: Number }, // 0-100
+    awakeTime: { type: Number }, // NEW for IMG Academy
+    sleepScore: { type: Number }, // 0-100, NEW for IMG Academy
+    sleepEfficiency: { type: Number }, // NEW for IMG Academy
     
-    // Recovery
+    // Recovery (NEW for IMG Academy)
     hrv: { type: Number }, // Heart Rate Variability
-    recoveryScore: { type: Number }, // 0-100
+    recoveryScore: { type: Number }, // 0-100, NEW
     strain: { type: Number }, // 0-21 (WHOOP style)
+    trainingLoad: { type: Number }, // 0-100, NEW for IMG Academy
     
     // Body Metrics
     weight: { type: Number },
