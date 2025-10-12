@@ -276,13 +276,25 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
 };
 
 // ============================================
-// DATABASE OPERATIONS
+// DATABASE OPERATIONS - FIXED
 // ============================================
 
 const storeWearableTokens = async (userId, provider, tokens) => {
   try {
+    console.log('🔄 Storing tokens for:', userId, provider);
+    
     const user = await User.findById(userId);
-    if (!user) throw new Error('User not found');
+    if (!user) {
+      console.error('❌ User not found:', userId);
+      throw new Error('User not found');
+    }
+
+    console.log('📦 Current connections:', user.wearableConnections?.length || 0);
+
+    // Ensure wearableConnections array exists
+    if (!user.wearableConnections) {
+      user.wearableConnections = [];
+    }
 
     const connectionIndex = user.wearableConnections.findIndex(
       conn => conn.provider === provider
@@ -300,31 +312,40 @@ const storeWearableTokens = async (userId, provider, tokens) => {
     };
 
     if (connectionIndex >= 0) {
+      console.log('🔄 Updating existing connection');
       user.wearableConnections[connectionIndex] = connectionData;
     } else {
+      console.log('➕ Adding new connection');
       user.wearableConnections.push(connectionData);
     }
 
+    // CRITICAL FIX: Use markModified to ensure Mongoose saves the array
+    user.markModified('wearableConnections');
+    
     await user.save();
+    
+    console.log('✅ Tokens stored successfully. Total connections:', user.wearableConnections.length);
     
     // Cache in Redis if available
     if (redisClient && redisReady) {
       try {
         await redisClient.setEx(
           `token:${userId}:${provider}`,
-          3600, // 1 hour cache
+          3600,
           JSON.stringify(connectionData)
         );
+        console.log('✅ Cached in Redis');
       } catch (error) {
-        console.warn('Redis cache failed:', error);
+        console.warn('⚠️ Redis cache failed:', error);
       }
     } else {
       inMemoryTokenCache.set(`${userId}:${provider}`, connectionData);
+      console.log('✅ Cached in memory');
     }
     
     return connectionData;
   } catch (error) {
-    console.error('Store tokens error:', error);
+    console.error('❌ Store tokens error:', error);
     throw error;
   }
 };
@@ -517,16 +538,17 @@ const handleOAuth2Callback = async (req, res) => {
 
     console.log('✅ Token received');
 
-    const { access_token, refresh_token, expires_in, user_id } = tokenResponse.data;
+    const { access_token, refresh_token, expires_in, user_id, scope } = tokenResponse.data;
 
     await storeWearableTokens(userId, provider, {
       accessToken: access_token,
       refreshToken: refresh_token,
       expiresIn: expires_in,
-      externalUserId: user_id
+      externalUserId: user_id,
+      scope: scope
     });
 
-    console.log('✅ Tokens stored');
+    console.log('✅ Tokens stored in database');
 
     return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
   } catch (error) {
@@ -567,7 +589,7 @@ const fetchFitbitData = async (accessToken, startDate, endDate) => {
       rawData: { activity: activity.data, heartRate: heartRate.data, sleep: sleep.data }
     };
   } catch (error) {
-    console.error('Fitbit fetch error:', error);
+    console.error('Fitbit fetch error:', error.response?.data || error.message);
     throw error;
   }
 };
@@ -647,6 +669,8 @@ const syncWearableData = async (req, res) => {
     const { provider } = req.params;
     const userId = req.user.id;
 
+    console.log('🔄 Sync requested for:', provider, 'by user:', userId);
+
     if (!PROVIDERS[provider]) {
       return res.status(400).json({ 
         success: false,
@@ -676,7 +700,10 @@ const syncWearableData = async (req, res) => {
       });
     }
 
+    console.log('✅ Connection found');
+
     if (connection.expiresAt && new Date() >= new Date(connection.expiresAt)) {
+      console.log('🔄 Token expired, refreshing...');
       try {
         const newTokens = await refreshAccessToken(userId, provider);
         connection.accessToken = newTokens.accessToken;
@@ -690,6 +717,8 @@ const syncWearableData = async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
     let data;
+
+    console.log('📡 Fetching data from', provider);
 
     switch (provider) {
       case 'fitbit':
@@ -705,7 +734,11 @@ const syncWearableData = async (req, res) => {
         });
     }
 
+    console.log('✅ Data fetched:', Object.keys(data));
+
     await storeWearableData(userId, provider, data, today);
+
+    console.log('✅ Data stored in WearableData collection');
 
     res.json({ 
       success: true, 
@@ -714,7 +747,7 @@ const syncWearableData = async (req, res) => {
       syncedAt: new Date()
     });
   } catch (error) {
-    console.error('Sync error:', error);
+    console.error('❌ Sync error:', error);
     
     if (error.response?.status === 401) {
       return res.status(401).json({ 
@@ -725,7 +758,8 @@ const syncWearableData = async (req, res) => {
     
     res.status(500).json({ 
       success: false,
-      error: 'Failed to sync' 
+      error: 'Failed to sync',
+      details: error.message
     });
   }
 };
@@ -737,6 +771,13 @@ const syncWearableData = async (req, res) => {
 const getConnections = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    
+    if (!user.wearableConnections || user.wearableConnections.length === 0) {
+      return res.json({ 
+        success: true,
+        connections: []
+      });
+    }
     
     const connections = user.wearableConnections.map(conn => ({
       provider: conn.provider,
@@ -750,6 +791,7 @@ const getConnections = async (req, res) => {
       connections 
     });
   } catch (error) {
+    console.error('Get connections error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch connections' 
@@ -760,7 +802,7 @@ const getConnections = async (req, res) => {
 const getWearableData = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { startDate, endDate, provider } = req.query;
+    const { startDate, endDate, provider, days } = req.query;
 
     const query = { userId };
     
@@ -772,6 +814,10 @@ const getWearableData = async (req, res) => {
       query.date = {};
       if (startDate) query.date.$gte = new Date(startDate);
       if (endDate) query.date.$lte = new Date(endDate);
+    } else if (days) {
+      const daysAgo = new Date();
+      daysAgo.setDate(daysAgo.getDate() - parseInt(days));
+      query.date = { $gte: daysAgo };
     }
 
     const data = await WearableData.find(query).sort('-date').limit(30);
@@ -782,6 +828,7 @@ const getWearableData = async (req, res) => {
       data 
     });
   } catch (error) {
+    console.error('Get wearable data error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch data' 
@@ -825,6 +872,7 @@ const disconnect = async (req, res) => {
 
     if (connectionIndex >= 0) {
       user.wearableConnections.splice(connectionIndex, 1);
+      user.markModified('wearableConnections');
       await user.save();
       
       // Clear cache
@@ -868,9 +916,12 @@ const getInsights = async (req, res) => {
     }
 
     const insights = {
-      averageSteps: Math.round(data.reduce((sum, d) => sum + (d.steps || 0), 0) / data.length),
-      averageSleep: Math.round(data.reduce((sum, d) => sum + (d.sleepDuration || 0), 0) / data.length),
-      averageCalories: Math.round(data.reduce((sum, d) => sum + (d.caloriesBurned || 0), 0) / data.length),
+      averages: {
+        steps: Math.round(data.reduce((sum, d) => sum + (d.steps || 0), 0) / data.length),
+        sleep: Math.round(data.reduce((sum, d) => sum + (d.sleepDuration || 0), 0) / data.length),
+        activeMinutes: Math.round(data.reduce((sum, d) => sum + (d.activeMinutes || 0), 0) / data.length),
+        restingHR: Math.round(data.reduce((sum, d) => sum + (d.restingHeartRate || 0), 0) / data.filter(d => d.restingHeartRate).length) || 0
+      },
       dataPoints: data.length,
       period: days
     };
