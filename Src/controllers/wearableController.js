@@ -460,7 +460,7 @@ const initiateOAuth2 = async (req, res) => {
       response_type: 'code',
       redirect_uri: config.redirectUri,
       scope: config.scope,
-      state: state
+      state: state,
       prompt: 'login consent'
     };
     
