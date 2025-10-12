@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const axios = require('axios');
-const OAuth = require('oauth-1.0a');
 const redis = require('redis');
 const WearableData = require('../models/WearableData');
 const User = require('../models/User');
@@ -54,10 +53,8 @@ const initializeRedis = async () => {
   }
 };
 
-// Initialize Redis on startup
 initializeRedis();
 
-// Fallback in-memory storage (if Redis unavailable)
 const inMemoryStates = new Map();
 const inMemoryTokenCache = new Map();
 
@@ -186,12 +183,11 @@ const storeState = async (state, userId, provider, additionalData = {}) => {
     ...additionalData 
   };
 
-  // Try Redis first
   if (redisClient && redisReady) {
     try {
       await redisClient.setEx(
         `oauth:state:${state}`,
-        600, // 10 minutes
+        600,
         JSON.stringify(stateData)
       );
       console.log('✅ State stored in Redis:', state);
@@ -201,14 +197,12 @@ const storeState = async (state, userId, provider, additionalData = {}) => {
     }
   }
 
-  // Fallback to in-memory
   inMemoryStates.set(state, stateData);
   setTimeout(() => inMemoryStates.delete(state), 10 * 60 * 1000);
   console.log('⚠️  State stored in memory (fallback):', state);
 };
 
 const verifyState = async (state) => {
-  // Try Redis first
   if (redisClient && redisReady) {
     try {
       const data = await redisClient.get(`oauth:state:${state}`);
@@ -222,7 +216,6 @@ const verifyState = async (state) => {
     }
   }
 
-  // Fallback to in-memory
   const data = inMemoryStates.get(state);
   if (data) {
     inMemoryStates.delete(state);
@@ -291,7 +284,6 @@ const storeWearableTokens = async (userId, provider, tokens) => {
 
     console.log('📦 Current connections:', user.wearableConnections?.length || 0);
 
-    // Ensure wearableConnections array exists
     if (!user.wearableConnections) {
       user.wearableConnections = [];
     }
@@ -319,14 +311,12 @@ const storeWearableTokens = async (userId, provider, tokens) => {
       user.wearableConnections.push(connectionData);
     }
 
-    // CRITICAL FIX: Use markModified to ensure Mongoose saves the array
     user.markModified('wearableConnections');
     
     await user.save();
     
     console.log('✅ Tokens stored successfully. Total connections:', user.wearableConnections.length);
     
-    // Cache in Redis if available
     if (redisClient && redisReady) {
       try {
         await redisClient.setEx(
@@ -353,7 +343,6 @@ const storeWearableTokens = async (userId, provider, tokens) => {
 const getWearableConnection = async (userId, provider) => {
   const cacheKey = `token:${userId}:${provider}`;
   
-  // Try Redis cache first
   if (redisClient && redisReady) {
     try {
       const cached = await redisClient.get(cacheKey);
@@ -365,22 +354,19 @@ const getWearableConnection = async (userId, provider) => {
     }
   }
 
-  // Check in-memory fallback
   const memoryCacheKey = `${userId}:${provider}`;
   if (inMemoryTokenCache.has(memoryCacheKey)) {
     return inMemoryTokenCache.get(memoryCacheKey);
   }
 
-  // Fetch from database
   const user = await User.findById(userId);
   if (!user) return null;
 
-  const connection = user.wearableConnections.find(
+  const connection = user.wearableConnections?.find(
     conn => conn.provider === provider
   );
 
   if (connection) {
-    // Cache it
     if (redisClient && redisReady) {
       try {
         await redisClient.setEx(cacheKey, 3600, JSON.stringify(connection));
@@ -417,6 +403,238 @@ const storeWearableData = async (userId, provider, data, date) => {
 };
 
 // ============================================
+// IMG ACADEMY: RECOVERY ALGORITHMS
+// ============================================
+
+const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency) => {
+  let score = 0;
+  let totalWeight = 0;
+  
+  if (hrv && hrv > 0) {
+    const hrvScore = Math.min((hrv / 80) * 100, 100);
+    score += hrvScore * 0.4;
+    totalWeight += 0.4;
+  }
+  
+  if (restingHR && restingHR > 0) {
+    const rhrScore = Math.max(0, 100 - ((restingHR - 40) / 40 * 100));
+    score += Math.min(rhrScore, 100) * 0.3;
+    totalWeight += 0.3;
+  }
+  
+  if (sleepQuality && sleepEfficiency) {
+    const sleepScore = (sleepQuality * 10 * 0.6) + (sleepEfficiency * 0.4);
+    score += sleepScore * 0.3;
+    totalWeight += 0.3;
+  }
+  
+  if (totalWeight > 0) {
+    score = score / totalWeight;
+  }
+  
+  return Math.round(Math.min(Math.max(score, 0), 100));
+};
+
+const calculateTrainingLoad = (activeMinutes, caloriesBurned, steps) => {
+  let load = 0;
+  
+  if (activeMinutes) {
+    const activeScore = Math.min((activeMinutes / 60) * 100, 100);
+    load += activeScore * 0.5;
+  }
+  
+  if (caloriesBurned) {
+    const caloriesScore = Math.min(((caloriesBurned - 1500) / 1500) * 100, 100);
+    load += Math.max(0, caloriesScore) * 0.3;
+  }
+  
+  if (steps) {
+    const stepsScore = Math.min((steps / 15000) * 100, 100);
+    load += stepsScore * 0.2;
+  }
+  
+  return Math.round(Math.min(Math.max(load, 0), 100));
+};
+
+// ============================================
+// ENHANCED FITBIT DATA FETCHING
+// ============================================
+
+const fetchFitbitHRV = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  try {
+    const response = await api.get(`/user/-/hrv/date/${date}.json`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    return response.data.hrv?.[0]?.value?.dailyRmssd || null;
+  } catch (error) {
+    console.warn('HRV fetch skipped:', error.message);
+    return null;
+  }
+};
+
+const fetchFitbitSleepDetailed = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  try {
+    const response = await api.get(`/1.2/user/-/sleep/date/${date}.json`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    const sleep = response.data.sleep?.[0];
+    if (!sleep) return null;
+    
+    return {
+      totalMinutes: sleep.timeInBed || 0,
+      deepMinutes: sleep.levels?.summary?.deep?.minutes || 0,
+      remMinutes: sleep.levels?.summary?.rem?.minutes || 0,
+      lightMinutes: sleep.levels?.summary?.light?.minutes || 0,
+      awakeMinutes: sleep.levels?.summary?.wake?.minutes || 0,
+      efficiency: sleep.efficiency || 0,
+      startTime: sleep.startTime,
+      endTime: sleep.endTime
+    };
+  } catch (error) {
+    console.warn('Sleep detailed fetch skipped:', error.message);
+    return null;
+  }
+};
+
+const fetchFitbitHeartRateZones = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  try {
+    const response = await api.get(`/user/-/activities/heart/date/${date}/1d.json`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    const heartRateZones = response.data['activities-heart']?.[0]?.value?.heartRateZones || [];
+    const restingHR = response.data['activities-heart']?.[0]?.value?.restingHeartRate || null;
+    
+    return {
+      zones: heartRateZones.map(zone => ({
+        name: zone.name,
+        min: zone.min,
+        max: zone.max,
+        minutes: zone.minutes
+      })),
+      restingHeartRate: restingHR
+    };
+  } catch (error) {
+    console.warn('Heart rate zones fetch skipped:', error.message);
+    return { zones: [], restingHeartRate: null };
+  }
+};
+
+const fetchFitbitDataEnhanced = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  const headers = { 'Authorization': `Bearer ${accessToken}` };
+
+  try {
+    console.log('🔄 Fetching enhanced Fitbit data for', date);
+    
+    const [activity, heartRateData, sleep] = await Promise.all([
+      api.get(`/user/-/activities/date/${date}.json`, { headers }),
+      fetchFitbitHeartRateZones(accessToken, date),
+      fetchFitbitSleepDetailed(accessToken, date)
+    ]);
+
+    const hrv = await fetchFitbitHRV(accessToken, date);
+
+    const steps = activity.data.summary?.steps || 0;
+    const distance = activity.data.summary?.distances?.[0]?.distance || 0;
+    const caloriesBurned = activity.data.summary?.caloriesOut || 0;
+    const activeMinutes = (activity.data.summary?.veryActiveMinutes || 0) + 
+                         (activity.data.summary?.fairlyActiveMinutes || 0);
+    
+    const restingHR = heartRateData.restingHeartRate;
+    const sleepMinutes = sleep?.totalMinutes || 0;
+    const sleepEfficiency = sleep?.efficiency || 0;
+    
+    const sleepQuality = sleepMinutes > 0 ? Math.min((sleepMinutes / 480) * 10, 10) : 0;
+    
+    const recoveryScore = calculateRecoveryScore(hrv, restingHR, sleepQuality, sleepEfficiency);
+    
+    const trainingLoad = calculateTrainingLoad(activeMinutes, caloriesBurned, steps);
+
+    console.log('✅ Enhanced data fetched:', {
+      steps,
+      recoveryScore,
+      trainingLoad,
+      hrv: hrv || 'N/A',
+      sleepScore: Math.round(sleepQuality * 10)
+    });
+
+    return {
+      steps,
+      distance,
+      caloriesBurned,
+      activeMinutes,
+      restingHeartRate: restingHR,
+      heartRateZones: heartRateData.zones,
+      sleepDuration: sleepMinutes,
+      deepSleep: sleep?.deepMinutes || 0,
+      lightSleep: sleep?.lightMinutes || 0,
+      remSleep: sleep?.remMinutes || 0,
+      awakeTime: sleep?.awakeMinutes || 0,
+      sleepEfficiency: sleepEfficiency,
+      sleepScore: Math.round(sleepQuality * 10),
+      hrv: hrv,
+      recoveryScore: recoveryScore,
+      trainingLoad: trainingLoad,
+      rawData: {
+        activity: activity.data,
+        heartRateData: heartRateData,
+        sleep: sleep
+      }
+    };
+  } catch (error) {
+    console.error('❌ Fitbit enhanced fetch error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// ============================================
+// POLAR DATA FETCHING
+// ============================================
+const fetchPolarData = async (accessToken, userId) => {
+  const config = PROVIDERS.polar;
+  const api = createAxiosInstance(config.apiBase);
+  
+  const headers = {
+    'Authorization': `Bearer ${accessToken}`
+  };
+
+  try {
+    await api.post('/users', { 'member-id': userId }, { headers }).catch(() => {});
+
+    const [exercises, activity] = await Promise.all([
+      api.get(`/users/${userId}/exercise-transactions`, { headers }),
+      api.get(`/users/${userId}/activity-transactions`, { headers })
+    ]);
+
+    const latestActivity = activity.data['activity-log']?.[0] || {};
+
+    return {
+      steps: latestActivity.steps || 0,
+      caloriesBurned: latestActivity.calories || 0,
+      activeMinutes: latestActivity['active-time'] ? Math.floor(latestActivity['active-time'] / 60) : 0,
+      rawData: { exercises: exercises.data, activity: activity.data }
+    };
+  } catch (error) {
+    console.error('Polar fetch error:', error);
+    throw error;
+  }
+};
+
+// ============================================
 // OAUTH 2.0 FLOW (WITH PKCE SUPPORT)
 // ============================================
 
@@ -443,7 +661,6 @@ const initiateOAuth2 = async (req, res) => {
     const state = generateState();
     const additionalData = {};
     
-    // PKCE support
     let codeChallenge = null;
     if (config.usesPKCE) {
       const codeVerifier = generateCodeVerifier();
@@ -559,71 +776,8 @@ const handleOAuth2Callback = async (req, res) => {
 };
 
 // ============================================
-// DATA FETCHING
+// DATA SYNCING
 // ============================================
-
-const fetchFitbitData = async (accessToken, startDate, endDate) => {
-  const config = PROVIDERS.fitbit;
-  const api = createAxiosInstance(config.apiBase);
-  
-  const headers = {
-    'Authorization': `Bearer ${accessToken}`
-  };
-
-  try {
-    const [activity, heartRate, sleep] = await Promise.all([
-      api.get(`/user/-/activities/date/${startDate}.json`, { headers }),
-      api.get(`/user/-/activities/heart/date/${startDate}/1d.json`, { headers }),
-      api.get(`/user/-/sleep/date/${startDate}.json`, { headers })
-    ]);
-
-    return {
-      steps: activity.data.summary?.steps || 0,
-      distance: activity.data.summary?.distances?.[0]?.distance || 0,
-      caloriesBurned: activity.data.summary?.caloriesOut || 0,
-      activeMinutes: (activity.data.summary?.veryActiveMinutes || 0) + (activity.data.summary?.fairlyActiveMinutes || 0),
-      restingHeartRate: heartRate.data['activities-heart']?.[0]?.value?.restingHeartRate,
-      sleepDuration: sleep.data.summary?.totalMinutesAsleep || 0,
-      deepSleep: sleep.data.summary?.stages?.deep || 0,
-      lightSleep: sleep.data.summary?.stages?.light || 0,
-      remSleep: sleep.data.summary?.stages?.rem || 0,
-      rawData: { activity: activity.data, heartRate: heartRate.data, sleep: sleep.data }
-    };
-  } catch (error) {
-    console.error('Fitbit fetch error:', error.response?.data || error.message);
-    throw error;
-  }
-};
-
-const fetchPolarData = async (accessToken, userId) => {
-  const config = PROVIDERS.polar;
-  const api = createAxiosInstance(config.apiBase);
-  
-  const headers = {
-    'Authorization': `Bearer ${accessToken}`
-  };
-
-  try {
-    await api.post('/users', { 'member-id': userId }, { headers }).catch(() => {});
-
-    const [exercises, activity] = await Promise.all([
-      api.get(`/users/${userId}/exercise-transactions`, { headers }),
-      api.get(`/users/${userId}/activity-transactions`, { headers })
-    ]);
-
-    const latestActivity = activity.data['activity-log']?.[0] || {};
-
-    return {
-      steps: latestActivity.steps || 0,
-      caloriesBurned: latestActivity.calories || 0,
-      activeMinutes: latestActivity['active-time'] ? Math.floor(latestActivity['active-time'] / 60) : 0,
-      rawData: { exercises: exercises.data, activity: activity.data }
-    };
-  } catch (error) {
-    console.error('Polar fetch error:', error);
-    throw error;
-  }
-};
 
 const refreshAccessToken = async (userId, provider) => {
   try {
@@ -723,7 +877,7 @@ const syncWearableData = async (req, res) => {
 
     switch (provider) {
       case 'fitbit':
-        data = await fetchFitbitData(connection.accessToken, today, today);
+        data = await fetchFitbitDataEnhanced(connection.accessToken, today);
         break;
       case 'polar':
         data = await fetchPolarData(connection.accessToken, userId);
@@ -867,7 +1021,7 @@ const disconnect = async (req, res) => {
     const userId = req.user.id;
 
     const user = await User.findById(userId);
-    const connectionIndex = user.wearableConnections.findIndex(
+    const connectionIndex = user.wearableConnections?.findIndex(
       conn => conn.provider === provider
     );
 
@@ -876,7 +1030,6 @@ const disconnect = async (req, res) => {
       user.markModified('wearableConnections');
       await user.save();
       
-      // Clear cache
       if (redisClient && redisReady) {
         await redisClient.del(`token:${userId}:${provider}`);
       }
@@ -921,7 +1074,11 @@ const getInsights = async (req, res) => {
         steps: Math.round(data.reduce((sum, d) => sum + (d.steps || 0), 0) / data.length),
         sleep: Math.round(data.reduce((sum, d) => sum + (d.sleepDuration || 0), 0) / data.length),
         activeMinutes: Math.round(data.reduce((sum, d) => sum + (d.activeMinutes || 0), 0) / data.length),
-        restingHR: Math.round(data.reduce((sum, d) => sum + (d.restingHeartRate || 0), 0) / data.filter(d => d.restingHeartRate).length) || 0
+        restingHR: Math.round(data.reduce((sum, d) => sum + (d.restingHeartRate || 0), 0) / data.filter(d => d.restingHeartRate).length) || 0,
+        recoveryScore: Math.round(data.reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / data.filter(d => d.recoveryScore).length) || 0
+      },
+      trends: {
+        steps: data.length > 1 ? (data[data.length - 1].steps > data[0].steps ? 'improving' : 'declining') : 'stable'
       },
       dataPoints: data.length,
       period: days
@@ -939,8 +1096,6 @@ const getInsights = async (req, res) => {
   }
 };
 
-const oauthCallback = handleOAuth2Callback;
-const syncNow = syncWearableData;
 const initiateGarminOAuth = (req, res) => {
   res.status(501).json({ 
     success: false,
@@ -952,15 +1107,15 @@ module.exports = {
   initiateOAuth2,
   handleOAuth2Callback,
   initiateGarminOAuth,
-  oauthCallback,
+  oauthCallback: handleOAuth2Callback,
   syncWearableData,
-  syncNow,
+  syncNow: syncWearableData,
   getWearableData,
   getConnections,
   getInsights,
   manualEntry,
   disconnect,
   refreshAccessToken,
-  fetchFitbitData,
+  fetchFitbitDataEnhanced,
   fetchPolarData
 };
