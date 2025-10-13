@@ -150,6 +150,7 @@ const classRoutes = require('./Src/routes/class');
 const exerciseRoutes = require('./Src/routes/exercises');
 const goalRoutes = require('./Src/routes/goals');
 const gymRoutes = require('./Src/routes/gyms');
+const intelligenceRoutes = require('./Src/routes/intelligence');
 const measurementRoutes = require('./Src/routes/measurements');
 const messageRoutes = require('./Src/routes/message');
 const nutritionRoutes = require('./Src/routes/nutrition');
@@ -165,7 +166,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/goals', goalRoutes);
-app.use('/api/gyms', gymRoutes); // NEW: Island-Genesis
+app.use('/api/gyms', gymRoutes);
+app.use('/api/intelligence', intelligenceRoutes);
 app.use('/api/measurements', measurementRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/nutrition', nutritionRoutes);
@@ -191,7 +193,8 @@ app.get('/api/health', async (req, res) => {
             classes: '✅',
             exercises: '✅',
             goals: '✅',
-            gyms: '✅ NEW',
+            gyms: '✅',
+            intelligence: '✅ NEW',
             measurements: '✅',
             messages: '✅',
             nutrition: '✅',
@@ -218,8 +221,9 @@ app.get('/api', (req, res) => {
             classes: '/api/classes',
             exercises: '/api/exercises',
             goals: '/api/goals',
-            gyms: '/api/gyms [NEW]',
+            gyms: '/api/gyms',
             health: '/api/health',
+            intelligence: '/api/intelligence [NEW]',
             measurements: '/api/measurements',
             messages: '/api/messages',
             nutrition: '/api/nutrition',
@@ -254,6 +258,7 @@ app.use('/api/*', (req, res) => {
             '/api/goals',
             '/api/gyms',
             '/api/health',
+            '/api/intelligence',
             '/api/measurements',
             '/api/messages',
             '/api/nutrition',
@@ -357,14 +362,15 @@ const startServer = async () => {
 ║  💚 Health:      http://localhost:${PORT}/api/health      ║
 ║  🔧 Environment: ${(process.env.NODE_ENV || 'development').padEnd(41)}║
 ║  📦 Database:    Connected                             ║
-║  🎯 Routes:      13 route groups mounted               ║
+║  🎯 Routes:      14 route groups mounted               ║
 ╠════════════════════════════════════════════════════════╣
 ║  📍 Available Endpoints:                               ║
 ║     /api/auth         - Authentication                 ║
 ║     /api/classes      - Calendar & Scheduling          ║
 ║     /api/exercises    - Exercise Library               ║
 ║     /api/goals        - Goals & Habits                 ║
-║     /api/gyms         - 🆕 Island Management           ║
+║     /api/gyms         - Island Management              ║
+║     /api/intelligence - 🆕 AI Health Insights          ║
 ║     /api/measurements - Body Measurements              ║
 ║     /api/messages     - Messaging                      ║
 ║     /api/nutrition    - Nutrition Plans                ║
@@ -374,6 +380,7 @@ const startServer = async () => {
 ║     /api/workouts     - Workout System                 ║
 ╠════════════════════════════════════════════════════════╣
 ║  🏝️ Island-Genesis Architecture Active                ║
+║  🧠 AI Intelligence Engine Ready                       ║
 ║  🔥 Phoenix of Tesla™ - Production Ready               ║
 ╚════════════════════════════════════════════════════════╝
             `);
