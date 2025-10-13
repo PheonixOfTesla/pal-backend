@@ -18,7 +18,7 @@ const initializeRedis = async () => {
   const redisUrl = process.env.REDIS_URL;
   
   if (!redisUrl) {
-    console.warn('⚠️  REDIS_URL not configured. Using in-memory storage (not recommended for production)');
+    console.warn('⚠️  REDIS_URL not configured. Using in-memory storage');
     return null;
   }
 
@@ -34,10 +34,6 @@ const initializeRedis = async () => {
     redisClient.on('error', (err) => {
       console.error('❌ Redis Client Error:', err);
       redisReady = false;
-    });
-
-    redisClient.on('connect', () => {
-      console.log('🔗 Redis connecting...');
     });
 
     redisClient.on('ready', () => {
@@ -59,7 +55,7 @@ const inMemoryStates = new Map();
 const inMemoryTokenCache = new Map();
 
 // ============================================
-// PKCE HELPER FUNCTIONS (FOR FITBIT OAUTH)
+// PKCE HELPER FUNCTIONS
 // ============================================
 const generateCodeVerifier = () => {
   return crypto.randomBytes(32).toString('base64url');
@@ -81,7 +77,7 @@ const PROVIDERS = {
         authUrl: 'https://www.fitbit.com/oauth2/authorize',
         tokenUrl: 'https://api.fitbit.com/oauth2/token',
         apiBase: 'https://api.fitbit.com/1',
-        scope: 'activity heartrate sleep profile weight nutrition',
+        scope: 'activity heartrate sleep profile weight nutrition oxygen_saturation respiratory_rate cardio_fitness temperature',
         usesOAuth2: true,
         usesPKCE: true,
         rateLimit: { requests: 150, window: 3600000 }
@@ -236,7 +232,7 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
     baseURL,
     timeout,
     headers: {
-      'User-Agent': 'ClockWork-Wearables/2.0',
+      'User-Agent': 'ClockWork-Elite/3.0',
       'Accept': 'application/json'
     }
   });
@@ -269,7 +265,7 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
 };
 
 // ============================================
-// DATABASE OPERATIONS - ENHANCED WITH SMART FALLBACK
+// DATABASE OPERATIONS
 // ============================================
 
 const storeWearableTokens = async (userId, provider, tokens) => {
@@ -403,8 +399,7 @@ const storeWearableData = async (userId, provider, data, date) => {
 };
 
 /**
- * ✅ NEW: Get most recent complete wearable data
- * Falls back to yesterday if today has insufficient data
+ * ✅ ELITE: Get most recent complete wearable data with smart fallback
  */
 const getLatestCompleteData = async (userId, provider) => {
   const today = new Date().toISOString().split('T')[0];
@@ -434,33 +429,45 @@ const getLatestCompleteData = async (userId, provider) => {
     console.log('⚠️ Using yesterday\'s data (today incomplete)');
   }
   
-  return yesterdayData || todayData; // Return yesterday or today (even if sparse)
+  return yesterdayData || todayData;
 };
 
 // ============================================
-// IMG ACADEMY: RECOVERY ALGORITHMS
+// IMG ACADEMY: ELITE RECOVERY ALGORITHMS
 // ============================================
 
-const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency) => {
+const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency, breathingRate) => {
   let score = 0;
   let totalWeight = 0;
   
+  // HRV (35% weight)
   if (hrv && hrv > 0) {
     const hrvScore = Math.min((hrv / 80) * 100, 100);
-    score += hrvScore * 0.4;
-    totalWeight += 0.4;
+    score += hrvScore * 0.35;
+    totalWeight += 0.35;
   }
   
+  // Resting HR (25% weight)
   if (restingHR && restingHR > 0) {
     const rhrScore = Math.max(0, 100 - ((restingHR - 40) / 40 * 100));
-    score += Math.min(rhrScore, 100) * 0.3;
-    totalWeight += 0.3;
+    score += Math.min(rhrScore, 100) * 0.25;
+    totalWeight += 0.25;
   }
   
+  // Sleep Quality (25% weight)
   if (sleepQuality && sleepEfficiency) {
     const sleepScore = (sleepQuality * 10 * 0.6) + (sleepEfficiency * 0.4);
-    score += sleepScore * 0.3;
-    totalWeight += 0.3;
+    score += sleepScore * 0.25;
+    totalWeight += 0.25;
+  }
+  
+  // Breathing Rate (15% weight) - NEW
+  if (breathingRate && breathingRate > 0) {
+    // Ideal breathing rate during sleep: 12-20 breaths/min
+    const breathingScore = breathingRate >= 12 && breathingRate <= 20 ? 100 : 
+                          Math.max(0, 100 - Math.abs(16 - breathingRate) * 10);
+    score += breathingScore * 0.15;
+    totalWeight += 0.15;
   }
   
   if (totalWeight > 0) {
@@ -470,37 +477,120 @@ const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency) =
   return Math.round(Math.min(Math.max(score, 0), 100));
 };
 
-const calculateTrainingLoad = (activeMinutes, caloriesBurned, steps) => {
+const calculateTrainingLoad = (activeMinutes, caloriesBurned, steps, activeZoneMinutes, cardioLoad) => {
   let load = 0;
+  let weights = 0;
   
+  // Active Zone Minutes (30% weight) - Fitbit's proprietary metric
+  if (activeZoneMinutes && activeZoneMinutes > 0) {
+    const azmScore = Math.min((activeZoneMinutes / 30) * 100, 100);
+    load += azmScore * 0.3;
+    weights += 0.3;
+  }
+  
+  // Cardio Load (25% weight) - NEW from Fitbit
+  if (cardioLoad && cardioLoad > 0) {
+    // Cardio load typically ranges 0-100+
+    const cardioScore = Math.min(cardioLoad, 100);
+    load += cardioScore * 0.25;
+    weights += 0.25;
+  }
+  
+  // Active Minutes (20% weight)
   if (activeMinutes) {
     const activeScore = Math.min((activeMinutes / 60) * 100, 100);
-    load += activeScore * 0.5;
+    load += activeScore * 0.2;
+    weights += 0.2;
   }
   
+  // Calories (15% weight)
   if (caloriesBurned) {
     const caloriesScore = Math.min(((caloriesBurned - 1500) / 1500) * 100, 100);
-    load += Math.max(0, caloriesScore) * 0.3;
+    load += Math.max(0, caloriesScore) * 0.15;
+    weights += 0.15;
   }
   
+  // Steps (10% weight)
   if (steps) {
     const stepsScore = Math.min((steps / 15000) * 100, 100);
-    load += stepsScore * 0.2;
+    load += stepsScore * 0.1;
+    weights += 0.1;
   }
   
-  return Math.round(Math.min(Math.max(load, 0), 100));
+  return weights > 0 ? Math.round(Math.min(Math.max(load / weights, 0), 100)) : 0;
 };
 
 // ============================================
-// ENHANCED FITBIT DATA FETCHING
+// 🔥 ELITE FITBIT DATA FETCHING - 100% CAPTURE
 // ============================================
 
+/**
+ * Fetch Breathing Rate (Respiratory Rate during sleep)
+ */
+const fetchFitbitBreathingRate = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  try {
+    const response = await api.get(`/1/user/-/br/date/${date}.json`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    // Fitbit returns breathing rate data
+    const brData = response.data.br;
+    if (brData && brData.length > 0) {
+      // Get the most recent breathing rate value
+      const latestBR = brData[brData.length - 1];
+      return {
+        breathingRate: latestBR.value?.breathingRate || null,
+        deepSleepSummary: latestBR.value?.deepSleepSummary || null
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn('Breathing rate fetch skipped:', error.message);
+    return null;
+  }
+};
+
+/**
+ * Fetch SpO2 (Blood Oxygen) - if device supports
+ */
+const fetchFitbitSpO2 = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  try {
+    const response = await api.get(`/1/user/-/spo2/date/${date}.json`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    // Fitbit SpO2 data structure
+    const spo2Data = response.data;
+    if (spo2Data && spo2Data.length > 0) {
+      const latestSpO2 = spo2Data[0];
+      return {
+        avg: latestSpO2.value?.avg || null,
+        min: latestSpO2.value?.min || null,
+        max: latestSpO2.value?.max || null
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn('SpO2 fetch skipped (may not be supported):', error.message);
+    return null;
+  }
+};
+
+/**
+ * Fetch HRV (Heart Rate Variability)
+ */
 const fetchFitbitHRV = async (accessToken, date) => {
   const config = PROVIDERS.fitbit;
   const api = createAxiosInstance(config.apiBase);
   
   try {
-    const response = await api.get(`/user/-/hrv/date/${date}.json`, {
+    const response = await api.get(`/1/user/-/hrv/date/${date}.json`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     
@@ -511,6 +601,9 @@ const fetchFitbitHRV = async (accessToken, date) => {
   }
 };
 
+/**
+ * Fetch detailed sleep with ALL stages
+ */
 const fetchFitbitSleepDetailed = async (accessToken, date) => {
   const config = PROVIDERS.fitbit;
   const api = createAxiosInstance(config.apiBase);
@@ -529,9 +622,13 @@ const fetchFitbitSleepDetailed = async (accessToken, date) => {
       remMinutes: sleep.levels?.summary?.rem?.minutes || 0,
       lightMinutes: sleep.levels?.summary?.light?.minutes || 0,
       awakeMinutes: sleep.levels?.summary?.wake?.minutes || 0,
+      restlessCount: sleep.levels?.summary?.restless?.count || 0,
+      restlessMinutes: sleep.levels?.summary?.restless?.minutes || 0,
       efficiency: sleep.efficiency || 0,
       startTime: sleep.startTime,
-      endTime: sleep.endTime
+      endTime: sleep.endTime,
+      minutesAsleep: sleep.minutesAsleep || 0,
+      minutesAwake: sleep.minutesAwake || 0
     };
   } catch (error) {
     console.warn('Sleep detailed fetch skipped:', error.message);
@@ -539,12 +636,15 @@ const fetchFitbitSleepDetailed = async (accessToken, date) => {
   }
 };
 
+/**
+ * Fetch heart rate zones with full details
+ */
 const fetchFitbitHeartRateZones = async (accessToken, date) => {
   const config = PROVIDERS.fitbit;
   const api = createAxiosInstance(config.apiBase);
   
   try {
-    const response = await api.get(`/user/-/activities/heart/date/${date}/1d.json`, {
+    const response = await api.get(`/1/user/-/activities/heart/date/${date}/1d.json`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
     
@@ -556,7 +656,8 @@ const fetchFitbitHeartRateZones = async (accessToken, date) => {
         name: zone.name,
         min: zone.min,
         max: zone.max,
-        minutes: zone.minutes
+        minutes: zone.minutes,
+        caloriesOut: zone.caloriesOut || 0
       })),
       restingHeartRate: restingHR
     };
@@ -566,6 +667,36 @@ const fetchFitbitHeartRateZones = async (accessToken, date) => {
   }
 };
 
+/**
+ * Fetch Cardio Fitness Score (VO2 Max estimate)
+ */
+const fetchFitbitCardioFitness = async (accessToken, date) => {
+  const config = PROVIDERS.fitbit;
+  const api = createAxiosInstance(config.apiBase);
+  
+  try {
+    const response = await api.get(`/1/user/-/cardioscore/date/${date}.json`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+    
+    const cardioScore = response.data.cardioScore?.[0];
+    if (cardioScore) {
+      return {
+        vo2Max: cardioScore.value?.vo2Max || null,
+        cardioFitnessScore: cardioScore.value?.score || null
+      };
+    }
+    return null;
+  } catch (error) {
+    console.warn('Cardio fitness fetch skipped:', error.message);
+    return null;
+  }
+};
+
+/**
+ * 🔥 ELITE FITBIT DATA FETCHING - COMPREHENSIVE
+ * Captures 100% of available Fitbit data
+ */
 const fetchFitbitDataEnhanced = async (accessToken, date) => {
   const config = PROVIDERS.fitbit;
   const api = createAxiosInstance(config.apiBase);
@@ -573,65 +704,141 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
   const headers = { 'Authorization': `Bearer ${accessToken}` };
 
   try {
-    console.log('🔄 Fetching enhanced Fitbit data for', date);
+    console.log('🔄 Fetching ELITE enhanced Fitbit data for', date);
     
-    const [activity, heartRateData, sleep] = await Promise.all([
-      api.get(`/user/-/activities/date/${date}.json`, { headers }),
+    // Parallel fetch ALL available data
+    const [
+      activity, 
+      heartRateData, 
+      sleep, 
+      hrv, 
+      breathingRate, 
+      spo2,
+      cardioFitness
+    ] = await Promise.all([
+      api.get(`/1/user/-/activities/date/${date}.json`, { headers }),
       fetchFitbitHeartRateZones(accessToken, date),
-      fetchFitbitSleepDetailed(accessToken, date)
+      fetchFitbitSleepDetailed(accessToken, date),
+      fetchFitbitHRV(accessToken, date),
+      fetchFitbitBreathingRate(accessToken, date),
+      fetchFitbitSpO2(accessToken, date),
+      fetchFitbitCardioFitness(accessToken, date)
     ]);
 
-    const hrv = await fetchFitbitHRV(accessToken, date);
-
+    // Extract activity metrics
     const steps = activity.data.summary?.steps || 0;
     const distance = activity.data.summary?.distances?.[0]?.distance || 0;
     const caloriesBurned = activity.data.summary?.caloriesOut || 0;
     const activeMinutes = (activity.data.summary?.veryActiveMinutes || 0) + 
                          (activity.data.summary?.fairlyActiveMinutes || 0);
+    const sedentaryMinutes = activity.data.summary?.sedentaryMinutes || 0;
+    const lightlyActiveMinutes = activity.data.summary?.lightlyActiveMinutes || 0;
+    const floors = activity.data.summary?.floors || 0;
+    const elevation = activity.data.summary?.elevation || 0;
     
+    // Active Zone Minutes (Fitbit's proprietary metric)
+    const activeZoneMinutes = activity.data.summary?.activeZoneMinutes?.totalMinutes || 0;
+    
+    // Extract heart rate data
     const restingHR = heartRateData.restingHeartRate;
-    const sleepMinutes = sleep?.totalMinutes || 0;
+    
+    // Extract sleep data
+    const sleepMinutes = sleep?.minutesAsleep || 0;
     const sleepEfficiency = sleep?.efficiency || 0;
     
+    // Calculate sleep quality score
     const sleepQuality = sleepMinutes > 0 ? Math.min((sleepMinutes / 480) * 10, 10) : 0;
     
-    const recoveryScore = calculateRecoveryScore(hrv, restingHR, sleepQuality, sleepEfficiency);
+    // Calculate recovery score with breathing rate
+    const recoveryScore = calculateRecoveryScore(
+      hrv, 
+      restingHR, 
+      sleepQuality, 
+      sleepEfficiency,
+      breathingRate?.breathingRate
+    );
     
-    const trainingLoad = calculateTrainingLoad(activeMinutes, caloriesBurned, steps);
+    // Calculate training load with cardio load
+    const cardioLoad = activity.data.summary?.cardioFitnessScore || 0;
+    const trainingLoad = calculateTrainingLoad(
+      activeMinutes, 
+      caloriesBurned, 
+      steps,
+      activeZoneMinutes,
+      cardioLoad
+    );
 
-    console.log('✅ Enhanced data fetched:', {
+    console.log('✅ ELITE enhanced data fetched:', {
       steps,
       recoveryScore,
       trainingLoad,
       hrv: hrv || 'N/A',
-      sleepScore: Math.round(sleepQuality * 10)
+      breathingRate: breathingRate?.breathingRate || 'N/A',
+      spo2: spo2?.avg || 'N/A',
+      activeZoneMinutes,
+      cardioLoad
     });
 
+    // Return comprehensive data structure
     return {
+      // Basic Activity
       steps,
       distance,
       caloriesBurned,
       activeMinutes,
+      sedentaryMinutes,
+      lightlyActiveMinutes,
+      floors,
+      elevation,
+      
+      // Fitbit Proprietary Metrics
+      activeZoneMinutes,
+      cardioLoad,
+      
+      // Heart Rate
       restingHeartRate: restingHR,
       heartRateZones: heartRateData.zones,
+      
+      // Sleep - Complete breakdown
       sleepDuration: sleepMinutes,
       deepSleep: sleep?.deepMinutes || 0,
       lightSleep: sleep?.lightMinutes || 0,
       remSleep: sleep?.remMinutes || 0,
       awakeTime: sleep?.awakeMinutes || 0,
+      restlessMinutes: sleep?.restlessMinutes || 0,
+      restlessCount: sleep?.restlessCount || 0,
       sleepEfficiency: sleepEfficiency,
       sleepScore: Math.round(sleepQuality * 10),
+      sleepStartTime: sleep?.startTime || null,
+      sleepEndTime: sleep?.endTime || null,
+      
+      // Advanced Metrics
       hrv: hrv,
+      breathingRate: breathingRate?.breathingRate || null,
+      deepSleepBreathingRate: breathingRate?.deepSleepSummary?.breathingRate || null,
+      spo2Avg: spo2?.avg || null,
+      spo2Min: spo2?.min || null,
+      spo2Max: spo2?.max || null,
+      vo2Max: cardioFitness?.vo2Max || null,
+      cardioFitnessScore: cardioFitness?.cardioFitnessScore || null,
+      
+      // Calculated Scores
       recoveryScore: recoveryScore,
       trainingLoad: trainingLoad,
+      
+      // Raw data for reference
       rawData: {
         activity: activity.data,
         heartRateData: heartRateData,
-        sleep: sleep
+        sleep: sleep,
+        hrv: hrv,
+        breathingRate: breathingRate,
+        spo2: spo2,
+        cardioFitness: cardioFitness
       }
     };
   } catch (error) {
-    console.error('❌ Fitbit enhanced fetch error:', error.response?.data || error.message);
+    console.error('❌ Fitbit ELITE enhanced fetch error:', error.response?.data || error.message);
     throw error;
   }
 };
@@ -670,7 +877,7 @@ const fetchPolarData = async (accessToken, userId) => {
 };
 
 // ============================================
-// OAUTH 2.0 FLOW (WITH PKCE SUPPORT)
+// OAUTH 2.0 FLOW
 // ============================================
 
 const initiateOAuth2 = async (req, res) => {
@@ -811,7 +1018,7 @@ const handleOAuth2Callback = async (req, res) => {
 };
 
 // ============================================
-// DATA SYNCING - ENHANCED WITH 2-DAY FETCH
+// DATA SYNCING - ELITE 2-DAY FETCH
 // ============================================
 
 const refreshAccessToken = async (userId, provider) => {
@@ -859,7 +1066,7 @@ const syncWearableData = async (req, res) => {
     const { provider } = req.params;
     const userId = req.user.id;
 
-    console.log('🔄 Sync requested for:', provider, 'by user:', userId);
+    console.log('🔄 ELITE Sync requested for:', provider, 'by user:', userId);
 
     if (!PROVIDERS[provider]) {
       return res.status(400).json({ 
@@ -905,17 +1112,17 @@ const syncWearableData = async (req, res) => {
       }
     }
 
-    // ✅ ENHANCED: Fetch TODAY and YESTERDAY to ensure we always have data
+    // 🔥 ELITE: Fetch TODAY and YESTERDAY to ensure complete data
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    console.log('📡 Fetching data from', provider, 'for', yesterday, 'and', today);
+    console.log('📡 Fetching ELITE data from', provider, 'for', yesterday, 'and', today);
 
     let data;
 
     switch (provider) {
       case 'fitbit':
-        // Fetch both days
+        // Fetch both days with ELITE comprehensive data
         const [yesterdayData, todayData] = await Promise.all([
           fetchFitbitDataEnhanced(connection.accessToken, yesterday),
           fetchFitbitDataEnhanced(connection.accessToken, today)
@@ -927,9 +1134,9 @@ const syncWearableData = async (req, res) => {
           storeWearableData(userId, provider, todayData, today)
         ]);
         
-        console.log('✅ Stored data for both', yesterday, 'and', today);
+        console.log('✅ ELITE data stored for both', yesterday, 'and', today);
         
-        // Return today's data (but we have yesterday stored now)
+        // Return today's data
         data = todayData;
         break;
         
@@ -945,7 +1152,7 @@ const syncWearableData = async (req, res) => {
         });
     }
 
-    console.log('✅ Data fetched and stored');
+    console.log('✅ ELITE Data fetched and stored');
 
     res.json({ 
       success: true, 
@@ -955,7 +1162,7 @@ const syncWearableData = async (req, res) => {
       daysStored: provider === 'fitbit' ? 2 : 1
     });
   } catch (error) {
-    console.error('❌ Sync error:', error);
+    console.error('❌ ELITE Sync error:', error);
     
     if (error.response?.status === 401) {
       return res.status(401).json({ 
@@ -973,7 +1180,7 @@ const syncWearableData = async (req, res) => {
 };
 
 // ============================================
-// USER-FACING ENDPOINTS - ENHANCED WITH SMART DEFAULTS
+// USER-FACING ENDPOINTS
 // ============================================
 
 const getConnections = async (req, res) => {
@@ -1014,7 +1221,7 @@ const getWearableData = async (req, res) => {
 
     const query = { userId };
     
-    // ✅ NEW: If no date filters, get last 2 days by default for better UX
+    // Smart default: get last 2 days for better UX
     if (!startDate && !endDate && !days) {
       const twoDaysAgo = new Date();
       twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
@@ -1136,7 +1343,11 @@ const getInsights = async (req, res) => {
         sleep: Math.round(data.reduce((sum, d) => sum + (d.sleepDuration || 0), 0) / data.length),
         activeMinutes: Math.round(data.reduce((sum, d) => sum + (d.activeMinutes || 0), 0) / data.length),
         restingHR: Math.round(data.reduce((sum, d) => sum + (d.restingHeartRate || 0), 0) / data.filter(d => d.restingHeartRate).length) || 0,
-        recoveryScore: Math.round(data.reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / data.filter(d => d.recoveryScore).length) || 0
+        recoveryScore: Math.round(data.reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / data.filter(d => d.recoveryScore).length) || 0,
+        activeZoneMinutes: Math.round(data.reduce((sum, d) => sum + (d.activeZoneMinutes || 0), 0) / data.length),
+        breathingRate: data.filter(d => d.breathingRate).length > 0 
+          ? Math.round(data.reduce((sum, d) => sum + (d.breathingRate || 0), 0) / data.filter(d => d.breathingRate).length)
+          : null
       },
       trends: {
         steps: data.length > 1 ? (data[data.length - 1].steps > data[0].steps ? 'improving' : 'declining') : 'stable'
