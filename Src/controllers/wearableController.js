@@ -269,7 +269,7 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
 };
 
 // ============================================
-// DATABASE OPERATIONS - FIXED
+// DATABASE OPERATIONS - ENHANCED WITH SMART FALLBACK
 // ============================================
 
 const storeWearableTokens = async (userId, provider, tokens) => {
@@ -400,6 +400,41 @@ const storeWearableData = async (userId, provider, data, date) => {
     console.error('Store wearable data error:', error);
     throw error;
   }
+};
+
+/**
+ * ✅ NEW: Get most recent complete wearable data
+ * Falls back to yesterday if today has insufficient data
+ */
+const getLatestCompleteData = async (userId, provider) => {
+  const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  
+  // Try to get today's data
+  const todayData = await WearableData.findOne({
+    userId,
+    provider,
+    date: new Date(today)
+  });
+  
+  // If today has meaningful data (steps > 100 OR sleep > 0), use it
+  if (todayData && (todayData.steps > 100 || todayData.sleepDuration > 0)) {
+    console.log('✅ Using today\'s data (has activity/sleep)');
+    return todayData;
+  }
+  
+  // Otherwise, fall back to yesterday
+  const yesterdayData = await WearableData.findOne({
+    userId,
+    provider,
+    date: new Date(yesterday)
+  });
+  
+  if (yesterdayData) {
+    console.log('⚠️ Using yesterday\'s data (today incomplete)');
+  }
+  
+  return yesterdayData || todayData; // Return yesterday or today (even if sparse)
 };
 
 // ============================================
@@ -776,7 +811,7 @@ const handleOAuth2Callback = async (req, res) => {
 };
 
 // ============================================
-// DATA SYNCING
+// DATA SYNCING - ENHANCED WITH 2-DAY FETCH
 // ============================================
 
 const refreshAccessToken = async (userId, provider) => {
@@ -870,18 +905,39 @@ const syncWearableData = async (req, res) => {
       }
     }
 
+    // ✅ ENHANCED: Fetch TODAY and YESTERDAY to ensure we always have data
     const today = new Date().toISOString().split('T')[0];
-    let data;
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    console.log('📡 Fetching data from', provider);
+    console.log('📡 Fetching data from', provider, 'for', yesterday, 'and', today);
+
+    let data;
 
     switch (provider) {
       case 'fitbit':
-        data = await fetchFitbitDataEnhanced(connection.accessToken, today);
+        // Fetch both days
+        const [yesterdayData, todayData] = await Promise.all([
+          fetchFitbitDataEnhanced(connection.accessToken, yesterday),
+          fetchFitbitDataEnhanced(connection.accessToken, today)
+        ]);
+        
+        // Store both
+        await Promise.all([
+          storeWearableData(userId, provider, yesterdayData, yesterday),
+          storeWearableData(userId, provider, todayData, today)
+        ]);
+        
+        console.log('✅ Stored data for both', yesterday, 'and', today);
+        
+        // Return today's data (but we have yesterday stored now)
+        data = todayData;
         break;
+        
       case 'polar':
         data = await fetchPolarData(connection.accessToken, userId);
+        await storeWearableData(userId, provider, data, today);
         break;
+        
       default:
         return res.status(501).json({ 
           success: false,
@@ -889,17 +945,14 @@ const syncWearableData = async (req, res) => {
         });
     }
 
-    console.log('✅ Data fetched:', Object.keys(data));
-
-    await storeWearableData(userId, provider, data, today);
-
-    console.log('✅ Data stored in WearableData collection');
+    console.log('✅ Data fetched and stored');
 
     res.json({ 
       success: true, 
       data,
       provider: PROVIDERS[provider].name,
-      syncedAt: new Date()
+      syncedAt: new Date(),
+      daysStored: provider === 'fitbit' ? 2 : 1
     });
   } catch (error) {
     console.error('❌ Sync error:', error);
@@ -920,7 +973,7 @@ const syncWearableData = async (req, res) => {
 };
 
 // ============================================
-// USER-FACING ENDPOINTS
+// USER-FACING ENDPOINTS - ENHANCED WITH SMART DEFAULTS
 // ============================================
 
 const getConnections = async (req, res) => {
@@ -961,18 +1014,26 @@ const getWearableData = async (req, res) => {
 
     const query = { userId };
     
-    if (provider) {
-      query.provider = provider;
-    }
-    
-    if (startDate || endDate) {
-      query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate);
-      if (endDate) query.date.$lte = new Date(endDate);
-    } else if (days) {
-      const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - parseInt(days));
-      query.date = { $gte: daysAgo };
+    // ✅ NEW: If no date filters, get last 2 days by default for better UX
+    if (!startDate && !endDate && !days) {
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      query.date = { $gte: twoDaysAgo };
+      console.log('⚠️ No date filter specified, defaulting to last 2 days');
+    } else {
+      if (provider) {
+        query.provider = provider;
+      }
+      
+      if (startDate || endDate) {
+        query.date = {};
+        if (startDate) query.date.$gte = new Date(startDate);
+        if (endDate) query.date.$lte = new Date(endDate);
+      } else if (days) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(days));
+        query.date = { $gte: daysAgo };
+      }
     }
 
     const data = await WearableData.find(query).sort('-date').limit(30);
@@ -1117,5 +1178,6 @@ module.exports = {
   disconnect,
   refreshAccessToken,
   fetchFitbitDataEnhanced,
-  fetchPolarData
+  fetchPolarData,
+  getLatestCompleteData
 };
