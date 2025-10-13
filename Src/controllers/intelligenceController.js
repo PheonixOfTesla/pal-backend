@@ -11,340 +11,176 @@ const { getLatestCompleteData } = require('./wearableController');
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
 /**
- * ✅ MAIN INTELLIGENCE ENDPOINT
- * Fetches all health data and generates AI-powered insights + ClockWork Unified Scores
+ * ✅ CLOCKWORK ELITE INTELLIGENCE ENGINE
+ * Real calculations, no guessing, elite-level AI coaching
  */
 exports.getHealthMetrics = async (req, res) => {
   try {
     const { userId } = req.params;
     
-    console.log('🧠 Intelligence Engine: Fetching data for user', userId);
+    console.log('🧠 ClockWork Intelligence: Loading data for', userId);
     
     // ============================================
-    // 1. FETCH ALL HEALTH DATA IN PARALLEL
+    // 1. FETCH ALL DATA (PARALLEL FOR SPEED)
     // ============================================
     const [
       wearableData,
-      recentWorkouts,
-      latestMeasurement,
+      last30DaysWearable,
+      last7DaysWorkouts,
+      last30DaysWorkouts,
+      allMeasurements,
       nutritionPlan,
       activeGoals,
-      allMeasurements,
-      last7DaysWearable
+      completedGoals
     ] = await Promise.all([
-      // Wearable Data - Use smart fallback to yesterday if today incomplete
       getLatestCompleteData(userId, 'fitbit').catch(() => null),
       
-      // Recent Workouts (last 7 days)
+      WearableData.find({
+        userId: userId,
+        date: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+      }).sort('-date').lean(),
+      
       Workout.find({ 
         clientId: userId,
         scheduledDate: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-      })
-        .sort('-scheduledDate')
-        .limit(5)
-        .lean(),
+      }).sort('-scheduledDate').lean(),
       
-      // Latest Measurement
-      Measurement.findOne({ clientId: userId })
-        .sort('-date')
-        .lean(),
+      Workout.find({ 
+        clientId: userId,
+        scheduledDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+      }).sort('-scheduledDate').lean(),
       
-      // Nutrition Plan
-      Nutrition.findOne({ clientId: userId })
-        .lean(),
+      Measurement.find({ clientId: userId }).sort('-date').limit(30).lean(),
       
-      // Active Goals (not completed)
+      Nutrition.findOne({ clientId: userId }).lean(),
+      
       Goal.find({ 
         clientId: userId,
         completed: false 
-      })
-        .sort('-createdAt')
-        .limit(5)
-        .lean(),
+      }).sort('-createdAt').lean(),
       
-      // All Measurements (for trends)
-      Measurement.find({ clientId: userId })
-        .sort('-date')
-        .limit(10)
-        .lean(),
-      
-      // Last 7 days of wearable data (for training load chart)
-      WearableData.find({
-        userId: userId,
-        date: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-      })
-        .sort('-date')
-        .lean()
+      Goal.find({ 
+        clientId: userId,
+        completed: true 
+      }).sort('-completedAt').limit(10).lean()
     ]);
     
-    console.log('✅ Data fetched:', {
+    console.log('✅ Data loaded:', {
       wearable: !!wearableData,
-      workouts: recentWorkouts?.length || 0,
-      measurement: !!latestMeasurement,
+      wearableHistory: last30DaysWearable.length,
+      workouts7d: last7DaysWorkouts.length,
+      workouts30d: last30DaysWorkouts.length,
+      measurements: allMeasurements.length,
       nutrition: !!nutritionPlan,
-      goals: activeGoals?.length || 0
+      activeGoals: activeGoals.length
     });
     
     // ============================================
-    // 2. CALCULATE KEY METRICS
-    // ============================================
-    const completedWorkouts = recentWorkouts.filter(w => w.completed).length;
-    const workoutCompletionRate = recentWorkouts.length > 0 
-      ? Math.round((completedWorkouts / recentWorkouts.length) * 100)
-      : 0;
-    
-    // ============================================
-    // 3. BUILD METRICS RESPONSE
-    // ============================================
-    const metrics = {
-      // Wearable Metrics
-      steps: wearableData?.steps || 0,
-      sleep: wearableData?.sleepDuration || 0,
-      recoveryScore: wearableData?.recoveryScore || null,
-      hrv: wearableData?.hrv || null,
-      restingHR: wearableData?.restingHeartRate || null,
-      trainingLoad: wearableData?.trainingLoad || null,
-      
-      // Workout Metrics
-      workoutsThisWeek: completedWorkouts,
-      workoutCompletionRate,
-      totalWorkouts: recentWorkouts.length,
-      
-      // Body Metrics
-      weight: latestMeasurement?.weight || null,
-      bodyFat: latestMeasurement?.bodyFat || null,
-      
-      // Nutrition Metrics
-      proteinTarget: nutritionPlan?.protein?.target || 0,
-      proteinCurrent: nutritionPlan?.protein?.current || 0,
-      caloriesTarget: nutritionPlan?.calories?.target || 0,
-      caloriesCurrent: nutritionPlan?.calories?.current || 0,
-      
-      // Goals
-      activeGoalsCount: activeGoals.length,
-      goals: activeGoals.map(g => ({
-        name: g.name,
-        progress: Math.round((g.current / g.target) * 100),
-        current: g.current,
-        target: g.target
-      })),
-      
-      // Measurement History
-      measurements: {
-        latest: latestMeasurement,
-        history: allMeasurements
-      }
-    };
-    
-    // ============================================
-    // 4. CALCULATE CLOCKWORK UNIFIED SCORES (0-100)
+    // 2. CALCULATE REAL METRICS (NO GUESSING)
     // ============================================
     
-    // Helper function for nutrition adherence
-    const calculateNutritionAdherence = (nutrition) => {
-      if (!nutrition) return 0;
-      const macros = ['protein', 'carbs', 'fat'];
-      let adherenceSum = 0;
-      let adherenceCount = 0;
-      
-      macros.forEach(macro => {
-        if (nutrition[macro] && nutrition[macro].target > 0) {
-          const adherence = Math.min((nutrition[macro].current / nutrition[macro].target) * 100, 100);
-          adherenceSum += adherence;
-          adherenceCount++;
+    // RECOVERY ANALYSIS
+    const recoveryAnalysis = calculateRecoveryMetrics(wearableData, last30DaysWearable);
+    
+    // TRAINING LOAD ANALYSIS
+    const trainingAnalysis = calculateTrainingMetrics(last7DaysWorkouts, last30DaysWorkouts, wearableData);
+    
+    // BODY COMPOSITION TRENDS
+    const bodyAnalysis = calculateBodyMetrics(allMeasurements);
+    
+    // NUTRITION ADHERENCE
+    const nutritionAnalysis = calculateNutritionMetrics(nutritionPlan);
+    
+    // GOAL PROGRESS
+    const goalAnalysis = calculateGoalMetrics(activeGoals, completedGoals);
+    
+    // ============================================
+    // 3. CLOCKWORK UNIFIED SCORES (0-100)
+    // ============================================
+    
+    const clockworkScores = {
+      recovery: {
+        score: recoveryAnalysis.score,
+        trend: recoveryAnalysis.trend,
+        insights: recoveryAnalysis.insights,
+        data: recoveryAnalysis.data
+      },
+      performance: {
+        score: trainingAnalysis.score,
+        trend: trainingAnalysis.trend,
+        insights: trainingAnalysis.insights,
+        data: trainingAnalysis.data
+      },
+      wellness: {
+        score: nutritionAnalysis.score + bodyAnalysis.score,
+        trend: bodyAnalysis.trend,
+        insights: [...nutritionAnalysis.insights, ...bodyAnalysis.insights],
+        data: {
+          nutrition: nutritionAnalysis.data,
+          body: bodyAnalysis.data
         }
-      });
-      
-      return adherenceCount > 0 ? Math.round(adherenceSum / adherenceCount) : 0;
+      },
+      progress: {
+        score: goalAnalysis.score,
+        trend: goalAnalysis.trend,
+        insights: goalAnalysis.insights,
+        data: goalAnalysis.data
+      }
     };
     
-    // 🟢 ClockWork Recovery Score
-    let recoveryScore = 0;
-    let recoveryWeights = 0;
-    if (wearableData?.recoveryScore) { 
-      recoveryScore += wearableData.recoveryScore * 0.5; 
-      recoveryWeights += 0.5; 
-    }
-    if (wearableData?.sleepScore) { 
-      recoveryScore += wearableData.sleepScore * 0.3; 
-      recoveryWeights += 0.3; 
-    }
-    if (wearableData?.hrv) { 
-      recoveryScore += Math.min((wearableData.hrv / 80) * 100, 100) * 0.2; 
-      recoveryWeights += 0.2; 
-    }
-    recoveryScore = recoveryWeights > 0 ? Math.round(recoveryScore / recoveryWeights) : 0;
-    
-    // 🔵 ClockWork Performance Score
-    let performanceScore = 0;
-    let perfWeights = 0;
-    performanceScore += workoutCompletionRate * 0.4; 
-    perfWeights += 0.4;
-    if (wearableData?.trainingLoad) { 
-      const loadScore = wearableData.trainingLoad >= 60 && wearableData.trainingLoad <= 80 
-        ? 100 
-        : Math.max(0, 100 - Math.abs(70 - wearableData.trainingLoad));
-      performanceScore += loadScore * 0.3; 
-      perfWeights += 0.3;
-    }
-    if (wearableData?.steps) { 
-      performanceScore += Math.min((wearableData.steps / 10000) * 100, 100) * 0.3; 
-      perfWeights += 0.3; 
-    }
-    performanceScore = perfWeights > 0 ? Math.round(performanceScore / perfWeights) : 0;
-    
-    // 🟡 ClockWork Wellness Score
-    let wellnessScore = 0;
-    let wellWeights = 0;
-    const nutritionAdherence = calculateNutritionAdherence(nutritionPlan);
-    wellnessScore += nutritionAdherence * 0.4; 
-    wellWeights += 0.4;
-    if (wearableData?.restingHeartRate) {
-      const rhrScore = wearableData.restingHeartRate >= 50 && wearableData.restingHeartRate <= 70 
-        ? 100 
-        : Math.max(0, 100 - Math.abs(60 - wearableData.restingHeartRate));
-      wellnessScore += rhrScore * 0.3; 
-      wellWeights += 0.3;
-    }
-    if (wearableData?.sleepEfficiency) { 
-      wellnessScore += wearableData.sleepEfficiency * 0.3; 
-      wellWeights += 0.3; 
-    }
-    wellnessScore = wellWeights > 0 ? Math.round(wellnessScore / wellWeights) : 0;
-    
-    // 🟣 ClockWork Progress Score
-    let progressScore = 0;
-    let progWeights = 0;
-    if (activeGoals.length > 0) {
-      const avgGoalProgress = activeGoals.reduce((sum, g) => {
-        const progress = Math.min((g.current / g.target) * 100, 100);
-        return sum + progress;
-      }, 0) / activeGoals.length;
-      progressScore += avgGoalProgress * 0.5; 
-      progWeights += 0.5;
-    }
-    progressScore += workoutCompletionRate * 0.3; 
-    progWeights += 0.3;
-    if (latestMeasurement && allMeasurements.length >= 2) {
-      const prev = allMeasurements[1];
-      const bodyProgress = latestMeasurement.weight <= prev.weight ? 100 : 50;
-      progressScore += bodyProgress * 0.2; 
-      progWeights += 0.2;
-    }
-    progressScore = progWeights > 0 ? Math.round(progressScore / progWeights) : 0;
-    
     // ============================================
-    // 5. GENERATE AI INSIGHTS FOR EACH SCORE
+    // 4. GENERATE ELITE AI COACHING
     // ============================================
     
-    const recoveryInsights = [];
-    const sleepHours = wearableData?.sleepDuration ? Math.floor(wearableData.sleepDuration / 60) : 0;
-    if (recoveryScore < 70 && sleepHours < 7) {
-      recoveryInsights.push(`Add ${8 - sleepHours} more hours of sleep for optimal body recovery`);
-    }
-    if (wearableData?.hrv && wearableData.hrv < 50) {
-      recoveryInsights.push('Consider active recovery or rest day - HRV below optimal range');
-    }
-    if (recoveryScore >= 80) {
-      recoveryInsights.push('Excellent recovery - ready for high-intensity training');
-    }
-    if (!wearableData) {
-      recoveryInsights.push('Connect a wearable device to track recovery metrics');
-    }
-    
-    const performanceInsights = [];
-    if (workoutCompletionRate < 80) {
-      const needed = Math.ceil((recentWorkouts.length - completedWorkouts) * 0.5);
-      performanceInsights.push(`Complete ${needed} more workouts this week to hit 80% consistency`);
-    }
-    if (wearableData?.steps && wearableData.steps < 8000) {
-      const needed = Math.round((10000 - wearableData.steps) / 1000);
-      performanceInsights.push(`Add ${needed}k more steps for optimal daily activity level`);
-    }
-    if (performanceScore >= 80) {
-      performanceInsights.push('Outstanding performance - maintain current training load');
-    }
-    if (wearableData?.trainingLoad && wearableData.trainingLoad > 85) {
-      performanceInsights.push('Training load is high - consider scheduling a recovery day');
-    }
-    
-    const wellnessInsights = [];
-    if (nutritionAdherence < 80) {
-      wellnessInsights.push('Increase protein intake to meet daily nutrition targets');
-    }
-    if (wearableData?.restingHeartRate && wearableData.restingHeartRate > 70) {
-      wellnessInsights.push('Elevated resting HR - prioritize sleep and stress management');
-    }
-    if (wellnessScore >= 85) {
-      wellnessInsights.push('Excellent wellness status - body is optimized');
-    }
-    if (latestMeasurement && allMeasurements.length >= 2) {
-      const prev = allMeasurements[1];
-      const weightChange = latestMeasurement.weight - prev.weight;
-      if (weightChange > 2) {
-        wellnessInsights.push(`Weight increased ${weightChange.toFixed(1)} lbs - review nutrition plan`);
-      } else if (weightChange < -2) {
-        wellnessInsights.push(`Great progress! ${Math.abs(weightChange).toFixed(1)} lbs lost`);
-      }
-    }
-    
-    const progressInsights = [];
-    if (activeGoals.length > 0) {
-      const nearComplete = activeGoals.filter(g => (g.current / g.target) >= 0.8);
-      if (nearComplete.length > 0) {
-        progressInsights.push(`${nearComplete.length} goal(s) are 80%+ complete - push to finish!`);
-      }
-      const behindSchedule = activeGoals.filter(g => {
-        const daysLeft = Math.ceil((new Date(g.deadline) - new Date()) / (1000 * 60 * 60 * 24));
-        const progressNeeded = 100 - (g.current / g.target) * 100;
-        return daysLeft < 7 && progressNeeded > 30;
-      });
-      if (behindSchedule.length > 0) {
-        progressInsights.push(`${behindSchedule.length} goal(s) need acceleration to meet deadline`);
-      }
-    }
-    if (progressScore >= 85) {
-      progressInsights.push('Exceptional progress across all metrics - keep it up!');
-    }
-    if (workoutCompletionRate >= 90 && activeGoals.length > 0) {
-      progressInsights.push('Outstanding consistency driving your goal progress forward');
-    }
-    
-    // ============================================
-    // 6. GENERATE OVERALL AI INSIGHTS (OPTIONAL)
-    // ============================================
     let aiInsights = null;
     
-    if (process.env.GOOGLE_AI_API_KEY) {
+    if (process.env.GOOGLE_AI_API_KEY && hasMinimumDataForAI(recoveryAnalysis, trainingAnalysis, nutritionAnalysis)) {
       try {
-        console.log('🤖 Calling Google AI for insights...');
+        console.log('🤖 Generating Elite AI Coaching...');
         
-        const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+        const model = genAI.getGenerativeModel({ 
+          model: 'gemini-pro',
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+          }
+        });
         
-        const prompt = buildInsightPrompt(metrics, wearableData, recentWorkouts, activeGoals);
+        const prompt = buildEliteCoachingPrompt(
+          recoveryAnalysis,
+          trainingAnalysis,
+          bodyAnalysis,
+          nutritionAnalysis,
+          goalAnalysis,
+          last7DaysWorkouts,
+          activeGoals
+        );
         
         const result = await model.generateContent(prompt);
         const response = await result.response;
         aiInsights = response.text();
         
-        console.log('✅ AI insights generated');
+        console.log('✅ Elite AI Coaching Generated');
       } catch (aiError) {
-        console.error('⚠️ AI generation failed:', aiError.message);
-        aiInsights = generateFallbackInsights(metrics);
+        console.error('⚠️ AI Error:', aiError.message);
+        aiInsights = generateEliteFallbackInsights(clockworkScores, trainingAnalysis, recoveryAnalysis);
       }
     } else {
-      console.log('⚠️ No AI API key, using fallback insights');
-      aiInsights = generateFallbackInsights(metrics);
+      console.log('⚠️ Using rule-based elite insights');
+      aiInsights = generateEliteFallbackInsights(clockworkScores, trainingAnalysis, recoveryAnalysis);
     }
     
     // ============================================
-    // 7. BUILD HEALTH METRICS FOR DASHBOARD PANELS
+    // 5. HEALTH METRICS FOR DASHBOARD
     // ============================================
+    
     const healthMetrics = wearableData ? {
       heartRate: {
         current: wearableData.restingHeartRate || 0,
         zones: wearableData.heartRateZones || [],
-        trend: 'stable'
+        trend: recoveryAnalysis.hrvTrend
       },
       sleep: {
         score: wearableData.sleepScore || 0,
@@ -369,157 +205,539 @@ exports.getHealthMetrics = async (req, res) => {
     } : null;
     
     // ============================================
-    // 8. RETURN COMPLETE UNIFIED RESPONSE
+    // 6. RETURN COMPLETE INTELLIGENCE PACKAGE
     // ============================================
+    
     res.json({
       success: true,
       data: {
-        metrics,
-        insights: aiInsights,
-        healthMetrics: healthMetrics,
-        wearableData: last7DaysWearable,
-        
-        // 🎯 CLOCKWORK UNIFIED SCORES
-        clockworkScores: {
-          recovery: {
-            score: recoveryScore,
-            insights: recoveryInsights
-          },
-          performance: {
-            score: performanceScore,
-            insights: performanceInsights
-          },
-          wellness: {
-            score: wellnessScore,
-            insights: wellnessInsights
-          },
-          progress: {
-            score: progressScore,
-            insights: progressInsights
-          }
+        // Core metrics for display
+        metrics: {
+          steps: wearableData?.steps || 0,
+          sleep: wearableData?.sleepDuration || 0,
+          recoveryScore: wearableData?.recoveryScore || null,
+          hrv: wearableData?.hrv || null,
+          restingHR: wearableData?.restingHeartRate || null,
+          trainingLoad: wearableData?.trainingLoad || null,
+          workoutsThisWeek: trainingAnalysis.data.completedThisWeek,
+          workoutCompletionRate: trainingAnalysis.data.completionRate,
+          totalWorkouts: trainingAnalysis.data.totalScheduled,
+          weight: allMeasurements[0]?.weight || null,
+          bodyFat: allMeasurements[0]?.bodyFat || null,
+          proteinTarget: nutritionPlan?.protein?.target || 0,
+          proteinCurrent: nutritionPlan?.protein?.current || 0,
+          caloriesTarget: nutritionPlan?.calories?.target || 0,
+          caloriesCurrent: nutritionPlan?.calories?.current || 0,
+          activeGoalsCount: activeGoals.length,
+          goals: activeGoals.map(g => ({
+            name: g.name,
+            progress: Math.round((g.current / g.target) * 100),
+            current: g.current,
+            target: g.target
+          }))
         },
         
+        // Elite AI insights
+        insights: aiInsights,
+        
+        // Dashboard panels data
+        healthMetrics: healthMetrics,
+        wearableData: last30DaysWearable,
+        
+        // ClockWork Unified Scores with deep analytics
+        clockworkScores: clockworkScores,
+        
+        // Data quality indicators
         dataQuality: {
           wearable: !!wearableData,
-          workouts: recentWorkouts.length > 0,
-          measurements: !!latestMeasurement,
+          wearableHistory: last30DaysWearable.length >= 7,
+          workouts: last7DaysWorkouts.length > 0,
+          measurements: allMeasurements.length > 0,
           nutrition: !!nutritionPlan,
           goals: activeGoals.length > 0
         },
+        
         lastUpdated: new Date()
       }
     });
     
   } catch (error) {
-    console.error('❌ Intelligence Engine error:', error);
+    console.error('❌ Intelligence Engine Error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate health insights',
+      message: 'Failed to generate intelligence',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
-/**
- * Build AI prompt from health data
- */
-function buildInsightPrompt(metrics, wearableData, workouts, goals) {
-  return `You are an elite fitness and recovery specialist analyzing health data for a client. Provide concise, actionable insights in a friendly but professional tone.
+// ============================================
+// CALCULATION FUNCTIONS (REAL MATH, NO GUESSING)
+// ============================================
 
-**CLIENT DATA:**
-- Steps Today: ${metrics.steps}
-- Sleep Last Night: ${Math.round(metrics.sleep / 60)} hours ${metrics.sleep % 60} minutes
-- Recovery Score: ${metrics.recoveryScore || 'N/A'}/100
-- HRV: ${metrics.hrv || 'N/A'} ms
-- Resting Heart Rate: ${metrics.restingHR || 'N/A'} bpm
-- Training Load: ${metrics.trainingLoad || 'N/A'}/100
-- Workouts This Week: ${metrics.workoutsThisWeek}/${metrics.totalWorkouts}
-- Completion Rate: ${metrics.workoutCompletionRate}%
-- Weight: ${metrics.weight || 'N/A'} lbs
-- Body Fat: ${metrics.bodyFat || 'N/A'}%
-- Protein: ${metrics.proteinCurrent}/${metrics.proteinTarget}g
-- Calories: ${metrics.caloriesCurrent}/${metrics.caloriesTarget} kcal
-
-**ACTIVE GOALS:**
-${goals.map(g => `- ${g.name}: ${Math.round((g.current / g.target) * 100)}% complete`).join('\n')}
-
-**RECENT WORKOUT PATTERN:**
-${workouts.slice(0, 3).map(w => `- ${w.name} (${w.completed ? 'Completed' : 'Scheduled'})`).join('\n')}
-
-Provide insights in 3-4 short paragraphs covering:
-1. **Recovery Status**: What the recovery/HRV/sleep data indicates
-2. **Training Recommendations**: Based on current load and completion rate
-3. **Nutrition Guidance**: Protein/calorie adherence and suggestions
-4. **Goal Progress**: Encouraging feedback on active goals
-
-Keep it conversational, motivating, and under 200 words total. Use specific numbers from the data.`;
+function calculateRecoveryMetrics(current, history) {
+  if (!current) {
+    return {
+      score: 0,
+      trend: 'insufficient_data',
+      insights: ['Connect a wearable device to track recovery metrics'],
+      data: {}
+    };
+  }
+  
+  const insights = [];
+  let score = 0;
+  let weights = 0;
+  
+  // HRV Analysis (40% weight)
+  if (current.hrv && current.hrv > 0) {
+    const hrvScore = Math.min((current.hrv / 80) * 100, 100);
+    score += hrvScore * 0.4;
+    weights += 0.4;
+    
+    if (current.hrv < 40) {
+      insights.push(`🔴 HRV critically low (${current.hrv}ms). High stress or overtraining detected. Rest day recommended.`);
+    } else if (current.hrv < 50) {
+      insights.push(`🟡 HRV below optimal (${current.hrv}ms). Active recovery or light training only.`);
+    } else if (current.hrv >= 70) {
+      insights.push(`🟢 HRV excellent (${current.hrv}ms). Ready for high-intensity training.`);
+    }
+  }
+  
+  // Sleep Analysis (35% weight)
+  if (current.sleepDuration && current.sleepDuration > 0) {
+    const sleepHours = current.sleepDuration / 60;
+    const sleepScore = Math.min((sleepHours / 8) * 100, 100);
+    score += sleepScore * 0.35;
+    weights += 0.35;
+    
+    if (sleepHours < 6) {
+      insights.push(`🔴 Critically low sleep (${sleepHours.toFixed(1)}h). Need ${(8 - sleepHours).toFixed(1)}h more for recovery.`);
+    } else if (sleepHours < 7) {
+      insights.push(`🟡 Suboptimal sleep (${sleepHours.toFixed(1)}h). Target 8h for optimal recovery.`);
+    } else if (sleepHours >= 8) {
+      insights.push(`🟢 Excellent sleep duration (${sleepHours.toFixed(1)}h). Body fully recovered.`);
+    }
+    
+    // Sleep quality check
+    if (current.deepSleep && current.sleepDuration > 0) {
+      const deepPercent = (current.deepSleep / current.sleepDuration) * 100;
+      if (deepPercent < 15) {
+        insights.push(`⚠️ Low deep sleep (${deepPercent.toFixed(0)}%). Consider sleep hygiene improvements.`);
+      }
+    }
+  }
+  
+  // Resting HR Analysis (25% weight)
+  if (current.restingHeartRate && current.restingHeartRate > 0) {
+    const rhrScore = Math.max(0, 100 - ((current.restingHeartRate - 40) / 40 * 100));
+    score += Math.min(rhrScore, 100) * 0.25;
+    weights += 0.25;
+    
+    if (current.restingHeartRate > 75) {
+      insights.push(`🔴 Elevated resting HR (${current.restingHeartRate}bpm). Sign of stress or inadequate recovery.`);
+    } else if (current.restingHeartRate > 70) {
+      insights.push(`🟡 Resting HR slightly elevated (${current.restingHeartRate}bpm). Monitor stress levels.`);
+    } else if (current.restingHeartRate <= 55) {
+      insights.push(`🟢 Excellent cardiovascular fitness (${current.restingHeartRate}bpm resting HR).`);
+    }
+  }
+  
+  const finalScore = weights > 0 ? Math.round(score / weights) : 0;
+  
+  // Calculate trend from history
+  let trend = 'stable';
+  if (history.length >= 7) {
+    const recentAvg = history.slice(0, 3).reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / 3;
+    const olderAvg = history.slice(4, 7).reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / 3;
+    if (recentAvg > olderAvg + 5) trend = 'improving';
+    if (recentAvg < olderAvg - 5) trend = 'declining';
+  }
+  
+  return {
+    score: finalScore,
+    trend,
+    insights: insights.length > 0 ? insights : ['Recovery metrics within normal range'],
+    data: {
+      hrv: current.hrv || 0,
+      sleepHours: current.sleepDuration ? (current.sleepDuration / 60).toFixed(1) : 0,
+      restingHR: current.restingHeartRate || 0,
+      sleepQuality: current.sleepScore || 0
+    },
+    hrvTrend: trend
+  };
 }
 
-/**
- * Generate fallback insights when AI is unavailable
- */
-function generateFallbackInsights(metrics) {
-  let insights = [];
+function calculateTrainingMetrics(last7Days, last30Days, wearableData) {
+  if (last7Days.length === 0) {
+    return {
+      score: 0,
+      trend: 'no_data',
+      insights: ['Start logging workouts to track performance'],
+      data: {
+        completedThisWeek: 0,
+        totalScheduled: 0,
+        completionRate: 0
+      }
+    };
+  }
   
-  // Recovery Insights
-  if (metrics.recoveryScore !== null) {
-    if (metrics.recoveryScore >= 70) {
-      insights.push(`🟢 **Great Recovery** (${metrics.recoveryScore}/100): Your body is well-rested and ready for intense training. This is an excellent time to push your limits.`);
-    } else if (metrics.recoveryScore >= 50) {
-      insights.push(`🟡 **Moderate Recovery** (${metrics.recoveryScore}/100): Your body is recovering but could use more rest. Consider lighter training or active recovery today.`);
-    } else if (metrics.recoveryScore > 0) {
-      insights.push(`🔴 **Low Recovery** (${metrics.recoveryScore}/100): Your body needs rest. Prioritize sleep, hydration, and consider taking a rest day or doing light mobility work.`);
+  const insights = [];
+  let score = 0;
+  let weights = 0;
+  
+  // Workout completion (40% weight)
+  const completedLast7 = last7Days.filter(w => w.completed).length;
+  const completionRate = Math.round((completedLast7 / last7Days.length) * 100);
+  score += completionRate * 0.4;
+  weights += 0.4;
+  
+  if (completionRate < 60) {
+    const needed = Math.ceil(last7Days.length * 0.8) - completedLast7;
+    insights.push(`🔴 Low consistency (${completionRate}%). Complete ${needed} more workouts this week to hit 80%.`);
+  } else if (completionRate < 80) {
+    insights.push(`🟡 Good consistency (${completionRate}%). Push for 80%+ to see optimal results.`);
+  } else {
+    insights.push(`🟢 Excellent consistency (${completionRate}%). Outstanding discipline!`);
+  }
+  
+  // Activity level (30% weight)
+  if (wearableData?.steps && wearableData.steps > 0) {
+    const stepsScore = Math.min((wearableData.steps / 10000) * 100, 100);
+    score += stepsScore * 0.3;
+    weights += 0.3;
+    
+    if (wearableData.steps < 5000) {
+      insights.push(`🔴 Very low activity (${wearableData.steps.toLocaleString()} steps). Aim for 10k daily.`);
+    } else if (wearableData.steps < 8000) {
+      const needed = Math.round((10000 - wearableData.steps) / 1000);
+      insights.push(`🟡 Add ${needed}k more steps to hit 10k daily target.`);
+    } else if (wearableData.steps >= 10000) {
+      insights.push(`🟢 Excellent daily activity (${wearableData.steps.toLocaleString()} steps).`);
     }
   }
   
-  // Sleep Insights
-  const sleepHours = Math.round(metrics.sleep / 60);
-  if (sleepHours > 0) {
-    if (sleepHours >= 7) {
-      insights.push(`😴 **Solid Sleep**: ${sleepHours}h ${metrics.sleep % 60}m is great for recovery. Keep this consistent!`);
-    } else if (sleepHours >= 5) {
-      insights.push(`⚠️ **Sleep Alert**: Only ${sleepHours}h ${metrics.sleep % 60}m. Aim for 7-9 hours for optimal recovery and performance.`);
+  // Training load balance (30% weight)
+  if (wearableData?.trainingLoad && wearableData.trainingLoad > 0) {
+    const loadScore = wearableData.trainingLoad >= 50 && wearableData.trainingLoad <= 85
+      ? 100
+      : Math.max(0, 100 - Math.abs(70 - wearableData.trainingLoad) * 2);
+    score += loadScore * 0.3;
+    weights += 0.3;
+    
+    if (wearableData.trainingLoad > 90) {
+      insights.push(`🔴 Training load very high (${wearableData.trainingLoad}/100). Schedule rest day to prevent overtraining.`);
+    } else if (wearableData.trainingLoad > 85) {
+      insights.push(`🟡 Training load elevated (${wearableData.trainingLoad}/100). Monitor recovery closely.`);
+    } else if (wearableData.trainingLoad < 40) {
+      insights.push(`🟡 Training load low (${wearableData.trainingLoad}/100). Room to increase intensity.`);
     } else {
-      insights.push(`🚨 **Critical Sleep**: ${sleepHours}h ${metrics.sleep % 60}m is insufficient. Prioritize sleep tonight - it's when your body rebuilds.`);
+      insights.push(`🟢 Training load optimal (${wearableData.trainingLoad}/100). Well-balanced program.`);
     }
   }
   
-  // Workout Consistency
-  if (metrics.workoutCompletionRate >= 75) {
-    insights.push(`💪 **Excellent Consistency**: ${metrics.workoutCompletionRate}% completion rate this week. You're crushing it!`);
-  } else if (metrics.workoutCompletionRate >= 50) {
-    insights.push(`📈 **Good Progress**: ${metrics.workoutsThisWeek}/${metrics.totalWorkouts} workouts completed. Try to hit all scheduled sessions this week!`);
-  } else if (metrics.totalWorkouts > 0) {
-    insights.push(`⏰ **Consistency Opportunity**: Only ${metrics.workoutsThisWeek}/${metrics.totalWorkouts} workouts done. Small steps lead to big results - get after it!`);
+  const finalScore = weights > 0 ? Math.round(score / weights) : 0;
+  
+  // Calculate 30-day trend
+  let trend = 'stable';
+  if (last30Days.length >= 14) {
+    const firstHalfCompleted = last30Days.slice(15).filter(w => w.completed).length;
+    const secondHalfCompleted = last30Days.slice(0, 15).filter(w => w.completed).length;
+    const firstHalfTotal = last30Days.slice(15).length;
+    const secondHalfTotal = last30Days.slice(0, 15).length;
+    
+    const oldRate = (firstHalfCompleted / firstHalfTotal) * 100;
+    const newRate = (secondHalfCompleted / secondHalfTotal) * 100;
+    
+    if (newRate > oldRate + 10) trend = 'improving';
+    if (newRate < oldRate - 10) trend = 'declining';
   }
   
-  // Nutrition Check
-  const proteinPercent = metrics.proteinTarget > 0 
-    ? Math.round((metrics.proteinCurrent / metrics.proteinTarget) * 100)
-    : 0;
-  
-  if (proteinPercent >= 90) {
-    insights.push(`🥩 **Protein On Point**: ${metrics.proteinCurrent}/${metrics.proteinTarget}g. Perfect for muscle recovery!`);
-  } else if (proteinPercent >= 70) {
-    insights.push(`🍗 **Nutrition Check**: ${metrics.proteinCurrent}/${metrics.proteinTarget}g protein. You're close - try to hit your target for better recovery.`);
-  } else if (metrics.proteinTarget > 0) {
-    insights.push(`⚠️ **Fuel Up**: Only ${metrics.proteinCurrent}/${metrics.proteinTarget}g protein today. Your muscles need fuel to grow and recover!`);
+  return {
+    score: finalScore,
+    trend,
+    insights,
+    data: {
+      completedThisWeek: completedLast7,
+      totalScheduled: last7Days.length,
+      completionRate,
+      trainingLoad: wearableData?.trainingLoad || 0
+    }
+  };
+}
+
+function calculateBodyMetrics(measurements) {
+  if (measurements.length === 0) {
+    return {
+      score: 0,
+      trend: 'no_data',
+      insights: ['Start tracking measurements to monitor body composition'],
+      data: {}
+    };
   }
   
-  // Goals Progress
-  if (metrics.activeGoalsCount > 0) {
-    const avgProgress = Math.round(
-      metrics.goals.reduce((sum, g) => sum + g.progress, 0) / metrics.goals.length
-    );
-    insights.push(`🎯 **Goal Tracking**: ${metrics.activeGoalsCount} active goals, ${avgProgress}% average progress. Stay focused!`);
+  const insights = [];
+  const latest = measurements[0];
+  
+  // Calculate trends if we have history
+  if (measurements.length >= 2) {
+    const previous = measurements[1];
+    const weightChange = latest.weight - previous.weight;
+    const daysBetween = Math.ceil((new Date(latest.date) - new Date(previous.date)) / (1000 * 60 * 60 * 24));
+    
+    if (daysBetween > 0) {
+      const weeklyRate = (weightChange / daysBetween) * 7;
+      
+      if (Math.abs(weightChange) >= 0.5) {
+        if (weightChange < 0) {
+          insights.push(`🟢 Lost ${Math.abs(weightChange).toFixed(1)} lbs (${Math.abs(weeklyRate).toFixed(1)} lbs/week rate). Excellent progress!`);
+        } else {
+          insights.push(`🟡 Gained ${weightChange.toFixed(1)} lbs (${weeklyRate.toFixed(1)} lbs/week rate). Review nutrition if unintended.`);
+        }
+      }
+    }
+    
+    // Body fat analysis
+    if (latest.bodyFat && previous.bodyFat) {
+      const bfChange = latest.bodyFat - previous.bodyFat;
+      if (Math.abs(bfChange) >= 0.5) {
+        if (bfChange < 0) {
+          insights.push(`🟢 Body fat decreased ${Math.abs(bfChange).toFixed(1)}%. Improving body composition.`);
+        } else {
+          insights.push(`🟡 Body fat increased ${bfChange.toFixed(1)}%. Review training/nutrition plan.`);
+        }
+      }
+    }
   }
   
-  // Default if no insights
-  if (insights.length === 0) {
-    insights.push('📊 Keep logging your data to get personalized insights! Connect a wearable and track your workouts for AI-powered guidance.');
+  // Long-term trend (30 days)
+  let trend = 'stable';
+  if (measurements.length >= 4) {
+    const recent = measurements.slice(0, 2).reduce((sum, m) => sum + m.weight, 0) / 2;
+    const older = measurements.slice(2, 4).reduce((sum, m) => sum + m.weight, 0) / 2;
+    if (recent < older - 1) trend = 'improving';
+    if (recent > older + 1) trend = 'declining';
   }
   
-  return insights.join('\n\n');
+  return {
+    score: 50, // Neutral score, body metrics are trend-based
+    trend,
+    insights: insights.length > 0 ? insights : ['Body composition stable - maintain current approach'],
+    data: {
+      currentWeight: latest.weight,
+      currentBodyFat: latest.bodyFat || null
+    }
+  };
+}
+
+function calculateNutritionMetrics(nutritionPlan) {
+  if (!nutritionPlan) {
+    return {
+      score: 0,
+      insights: ['Set up nutrition plan to track adherence'],
+      data: {}
+    };
+  }
+  
+  const insights = [];
+  let score = 0;
+  let count = 0;
+  
+  const macros = [
+    { name: 'Protein', data: nutritionPlan.protein, weight: 0.4 },
+    { name: 'Carbs', data: nutritionPlan.carbs, weight: 0.3 },
+    { name: 'Fat', data: nutritionPlan.fat, weight: 0.3 }
+  ];
+  
+  macros.forEach(macro => {
+    if (macro.data && macro.data.target > 0) {
+      const adherence = Math.min((macro.data.current / macro.data.target) * 100, 100);
+      score += adherence * macro.weight;
+      count++;
+      
+      if (adherence < 70) {
+        const needed = Math.round(macro.data.target - macro.data.current);
+        insights.push(`🔴 ${macro.name} low (${macro.data.current}/${macro.data.target}g). Need ${needed}g more.`);
+      } else if (adherence < 90) {
+        insights.push(`🟡 ${macro.name} close (${macro.data.current}/${macro.data.target}g). Almost there!`);
+      } else {
+        insights.push(`🟢 ${macro.name} on target (${macro.data.current}/${macro.data.target}g). Perfect!`);
+      }
+    }
+  });
+  
+  const finalScore = count > 0 ? Math.round(score) : 0;
+  
+  return {
+    score: finalScore,
+    insights: insights.length > 0 ? insights : ['No nutrition data available'],
+    data: {
+      proteinAdherence: nutritionPlan.protein?.target > 0 
+        ? Math.round((nutritionPlan.protein.current / nutritionPlan.protein.target) * 100)
+        : 0
+    }
+  };
+}
+
+function calculateGoalMetrics(activeGoals, completedGoals) {
+  if (activeGoals.length === 0 && completedGoals.length === 0) {
+    return {
+      score: 0,
+      trend: 'no_goals',
+      insights: ['Set goals to track progress'],
+      data: {}
+    };
+  }
+  
+  const insights = [];
+  let score = 0;
+  
+  // Active goals progress (70% weight)
+  if (activeGoals.length > 0) {
+    const progresses = activeGoals.map(g => {
+      const progress = Math.min((g.current / g.target) * 100, 100);
+      
+      // Individual goal feedback
+      if (progress >= 80) {
+        insights.push(`🟢 "${g.name}" is ${Math.round(progress)}% complete. Push to finish!`);
+      } else if (progress >= 50) {
+        insights.push(`🟡 "${g.name}" is ${Math.round(progress)}% complete. Keep going!`);
+      } else if (progress < 30) {
+        insights.push(`🔴 "${g.name}" only ${Math.round(progress)}% complete. Needs focus.`);
+      }
+      
+      return progress;
+    });
+    
+    const avgProgress = progresses.reduce((a, b) => a + b, 0) / progresses.length;
+    score += avgProgress * 0.7;
+  }
+  
+  // Recent completion rate (30% weight)
+  if (completedGoals.length > 0) {
+    const recentlyCompleted = completedGoals.filter(g => {
+      const daysSinceCompletion = Math.ceil((new Date() - new Date(g.completedAt)) / (1000 * 60 * 60 * 24));
+      return daysSinceCompletion <= 30;
+    }).length;
+    
+    if (recentlyCompleted > 0) {
+      score += 30;
+      insights.push(`🟢 Completed ${recentlyCompleted} goal(s) in last 30 days. Excellent momentum!`);
+    }
+  }
+  
+  const finalScore = Math.round(Math.min(score, 100));
+  
+  return {
+    score: finalScore,
+    trend: finalScore >= 70 ? 'on_track' : finalScore >= 40 ? 'steady' : 'needs_focus',
+    insights: insights.length > 0 ? insights : ['No active goals to track'],
+    data: {
+      activeCount: activeGoals.length,
+      completedLast30Days: completedGoals.length
+    }
+  };
+}
+
+// ============================================
+// ELITE AI COACHING PROMPT
+// ============================================
+
+function buildEliteCoachingPrompt(recovery, training, body, nutrition, goals, workouts, activeGoals) {
+  return `You are an elite performance coach analyzing data for a serious athlete. Provide insights that are SPECIFIC, ACTIONABLE, and FORWARD-LOOKING.
+
+══════════════════════════════════════════════════════════════
+📊 CLOCKWORK INTELLIGENCE REPORT
+══════════════════════════════════════════════════════════════
+
+🛌 RECOVERY STATUS (${recovery.score}/100 - ${recovery.trend}):
+${recovery.insights.join('\n')}
+Data: HRV ${recovery.data.hrv}ms | Sleep ${recovery.data.sleepHours}h | RHR ${recovery.data.restingHR}bpm
+
+💪 PERFORMANCE STATUS (${training.score}/100 - ${training.trend}):
+${training.insights.join('\n')}
+Data: ${training.data.completedThisWeek}/${training.data.totalScheduled} workouts (${training.data.completionRate}%)
+
+🏋️ RECENT TRAINING:
+${workouts.slice(0, 3).map((w, i) => `${i + 1}. ${w.name} - ${w.completed ? '✅' : '⏸️'} ${w.moodFeedback ? `(${w.moodFeedback}/5 mood)` : ''}`).join('\n')}
+
+🥗 NUTRITION STATUS (${nutrition.score}/100):
+${nutrition.insights.join('\n')}
+
+📈 BODY COMPOSITION (${body.trend}):
+${body.insights.join('\n')}
+
+🎯 GOAL PROGRESS (${goals.score}/100):
+${goals.insights.join('\n')}
+
+══════════════════════════════════════════════════════════════
+YOUR COACHING RESPONSE:
+══════════════════════════════════════════════════════════════
+
+Provide 4 concise paragraphs (150-200 words total):
+
+1. **Recovery Assessment**: Based on HRV/sleep/RHR data, what does their recovery status mean for today's training?
+
+2. **Training Recommendation**: Specific guidance for next 48 hours (intensity, volume, rest needed?)
+
+3. **Nutrition Strategy**: Macro adjustments or timing recommendations based on their adherence
+
+4. **Goal Focus**: Which goal needs attention? Specific action to take this week?
+
+Use EXACT NUMBERS from the data. Be direct and actionable. No fluff.`;
+}
+
+// ============================================
+// ELITE FALLBACK INSIGHTS (RULE-BASED)
+// ============================================
+
+function generateEliteFallbackInsights(scores, training, recovery) {
+  const sections = [];
+  
+  // Recovery section
+  sections.push(`**Recovery Analysis (${scores.recovery.score}/100):**`);
+  sections.push(scores.recovery.insights.join(' '));
+  
+  // Performance section
+  sections.push(`\n**Performance Analysis (${scores.performance.score}/100):**`);
+  sections.push(scores.performance.insights.join(' '));
+  
+  // Wellness section
+  sections.push(`\n**Wellness Analysis (${scores.wellness.score}/100):**`);
+  sections.push(scores.wellness.insights.join(' '));
+  
+  // Progress section
+  sections.push(`\n**Progress Analysis (${scores.progress.score}/100):**`);
+  sections.push(scores.progress.insights.join(' '));
+  
+  // Overall recommendation
+  const overallScore = Math.round(
+    (scores.recovery.score + scores.performance.score + scores.wellness.score + scores.progress.score) / 4
+  );
+  
+  sections.push(`\n**Overall Status:** ${overallScore}/100`);
+  
+  if (overallScore >= 80) {
+    sections.push('Outstanding across all metrics. Maintain current trajectory and consider progressive overload.');
+  } else if (overallScore >= 60) {
+    sections.push('Solid foundation with room for optimization. Focus on lowest-scoring areas for maximum impact.');
+  } else {
+    sections.push('Multiple areas need attention. Prioritize recovery and consistency to build momentum.');
+  }
+  
+  return sections.join('\n');
+}
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+function hasMinimumDataForAI(recovery, training, nutrition) {
+  return (
+    recovery.score > 0 ||
+    training.score > 0 ||
+    nutrition.score > 0
+  );
 }
 
 module.exports = exports;
