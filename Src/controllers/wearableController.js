@@ -1,3 +1,4 @@
+// Src/controllers/wearableController.js - ENHANCED WORKING VERSION
 const crypto = require('crypto');
 const axios = require('axios');
 const redis = require('redis');
@@ -5,20 +6,18 @@ const WearableData = require('../models/WearableData');
 const User = require('../models/User');
 
 // ============================================
-// REDIS CLIENT SETUP
+// REDIS CLIENT SETUP WITH GRACEFUL FALLBACK
 // ============================================
 let redisClient = null;
 let redisReady = false;
 
 const initializeRedis = async () => {
-  if (redisClient && redisReady) {
-    return redisClient;
-  }
+  if (redisClient && redisReady) return redisClient;
 
   const redisUrl = process.env.REDIS_URL;
   
   if (!redisUrl) {
-    console.warn('⚠️  REDIS_URL not configured. Using in-memory storage');
+    console.warn('⚠️  REDIS_URL not configured. Using in-memory storage (not recommended for production)');
     return null;
   }
 
@@ -27,30 +26,43 @@ const initializeRedis = async () => {
       url: redisUrl,
       socket: {
         tls: true,
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
+        reconnectStrategy: (retries) => {
+          if (retries > 10) {
+            console.error('❌ Redis: Max reconnection attempts reached');
+            return new Error('Max reconnection attempts reached');
+          }
+          return Math.min(retries * 100, 3000);
+        }
       }
     });
 
     redisClient.on('error', (err) => {
-      console.error('❌ Redis Client Error:', err);
+      console.error('❌ Redis Error:', err.message);
       redisReady = false;
     });
 
     redisClient.on('ready', () => {
-      console.log('✅ Redis connected and ready!');
+      console.log('✅ Redis connected successfully');
       redisReady = true;
+    });
+
+    redisClient.on('reconnecting', () => {
+      console.log('🔄 Redis reconnecting...');
     });
 
     await redisClient.connect();
     return redisClient;
   } catch (error) {
-    console.error('❌ Redis initialization failed:', error);
+    console.error('❌ Redis initialization failed:', error.message);
     return null;
   }
 };
 
+// Initialize Redis on startup
 initializeRedis();
 
+// In-memory fallback storage
 const inMemoryStates = new Map();
 const inMemoryTokenCache = new Map();
 
@@ -69,70 +81,70 @@ const generateCodeChallenge = (verifier) => {
 // PROVIDER CONFIGURATIONS
 // ============================================
 const PROVIDERS = {
-    fitbit: {
-        name: 'Fitbit',
-        clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3',
-        clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08',
-        redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/fitbit',
-        authUrl: 'https://www.fitbit.com/oauth2/authorize',
-        tokenUrl: 'https://api.fitbit.com/oauth2/token',
-        apiBase: 'https://api.fitbit.com/1',
-        scope: 'activity heartrate sleep profile weight nutrition oxygen_saturation respiratory_rate cardio_fitness temperature',
-        usesOAuth2: true,
-        usesPKCE: true,
-        rateLimit: { requests: 150, window: 3600000 }
-    },
-    garmin: {
-        name: 'Garmin',
-        clientId: process.env.GARMIN_CONSUMER_KEY || null,
-        clientSecret: process.env.GARMIN_CONSUMER_SECRET || null,
-        redirectUri: 'https://clockwork.fit/api/wearables/callback/garmin',
-        requestTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/request_token',
-        authUrl: 'https://connect.garmin.com/oauthConfirm',
-        accessTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/access_token',
-        apiBase: 'https://apis.garmin.com/wellness-api/rest',
-        usesOAuth1: true,
-        rateLimit: { requests: 200, window: 3600000 }
-    },
-    polar: {
-        name: 'Polar',
-        clientId: process.env.POLAR_CLIENT_ID || 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6',
-        clientSecret: process.env.POLAR_CLIENT_SECRET || '34c2a57a-bbc7-4035-84aa-153db113c809',
-        redirectUri: process.env.POLAR_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/polar',
-        authUrl: 'https://flow.polar.com/oauth2/authorization',
-        tokenUrl: 'https://polarremote.com/v2/oauth2/token',
-        apiBase: 'https://www.polaraccesslink.com/v3',
-        scope: 'accesslink.read_all',
-        usesOAuth2: true,
-        usesPKCE: false,
-        rateLimit: { requests: 100, window: 3600000 }
-    },
-    oura: {
-        name: 'Oura',
-        clientId: process.env.OURA_CLIENT_ID || null,
-        clientSecret: process.env.OURA_CLIENT_SECRET || null,
-        redirectUri: 'https://clockwork.fit/api/wearables/callback/oura',
-        authUrl: 'https://cloud.ouraring.com/oauth/authorize',
-        tokenUrl: 'https://api.ouraring.com/oauth/token',
-        apiBase: 'https://api.ouraring.com/v2',
-        scope: 'daily heartrate workout session',
-        usesOAuth2: true,
-        usesPKCE: false,
-        rateLimit: { requests: 5000, window: 86400000 }
-    },
-    whoop: {
-        name: 'WHOOP',
-        clientId: process.env.WHOOP_CLIENT_ID || null,
-        clientSecret: process.env.WHOOP_CLIENT_SECRET || null,
-        redirectUri: 'https://clockwork.fit/api/wearables/callback/whoop',
-        authUrl: 'https://api.prod.whoop.com/oauth/oauth2/auth',
-        tokenUrl: 'https://api.prod.whoop.com/oauth/oauth2/token',
-        apiBase: 'https://api.prod.whoop.com/developer/v1',
-        scope: 'read:recovery read:cycles read:workout read:sleep read:profile read:body_measurement',
-        usesOAuth2: true,
-        usesPKCE: false,
-        rateLimit: { requests: 100, window: 3600000 }
-    }
+  fitbit: {
+    name: 'Fitbit',
+    clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3',
+    clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08',
+    redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/fitbit',
+    authUrl: 'https://www.fitbit.com/oauth2/authorize',
+    tokenUrl: 'https://api.fitbit.com/oauth2/token',
+    apiBase: 'https://api.fitbit.com/1',
+    scope: 'activity heartrate sleep profile weight nutrition oxygen_saturation respiratory_rate cardio_fitness temperature',
+    usesOAuth2: true,
+    usesPKCE: true,
+    rateLimit: { requests: 150, window: 3600000 }
+  },
+  polar: {
+    name: 'Polar',
+    clientId: process.env.POLAR_CLIENT_ID || 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6',
+    clientSecret: process.env.POLAR_CLIENT_SECRET || '34c2a57a-bbc7-4035-84aa-153db113c809',
+    redirectUri: process.env.POLAR_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/polar',
+    authUrl: 'https://flow.polar.com/oauth2/authorization',
+    tokenUrl: 'https://polarremote.com/v2/oauth2/token',
+    apiBase: 'https://www.polaraccesslink.com/v3',
+    scope: 'accesslink.read_all',
+    usesOAuth2: true,
+    usesPKCE: false,
+    rateLimit: { requests: 100, window: 3600000 }
+  },
+  garmin: {
+    name: 'Garmin',
+    clientId: process.env.GARMIN_CONSUMER_KEY || null,
+    clientSecret: process.env.GARMIN_CONSUMER_SECRET || null,
+    redirectUri: 'https://clockwork.fit/api/wearables/callback/garmin',
+    requestTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/request_token',
+    authUrl: 'https://connect.garmin.com/oauthConfirm',
+    accessTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/access_token',
+    apiBase: 'https://apis.garmin.com/wellness-api/rest',
+    usesOAuth1: true,
+    rateLimit: { requests: 200, window: 3600000 }
+  },
+  oura: {
+    name: 'Oura',
+    clientId: process.env.OURA_CLIENT_ID || null,
+    clientSecret: process.env.OURA_CLIENT_SECRET || null,
+    redirectUri: 'https://clockwork.fit/api/wearables/callback/oura',
+    authUrl: 'https://cloud.ouraring.com/oauth/authorize',
+    tokenUrl: 'https://api.ouraring.com/oauth/token',
+    apiBase: 'https://api.ouraring.com/v2',
+    scope: 'daily heartrate workout session',
+    usesOAuth2: true,
+    usesPKCE: false,
+    rateLimit: { requests: 5000, window: 86400000 }
+  },
+  whoop: {
+    name: 'WHOOP',
+    clientId: process.env.WHOOP_CLIENT_ID || null,
+    clientSecret: process.env.WHOOP_CLIENT_SECRET || null,
+    redirectUri: 'https://clockwork.fit/api/wearables/callback/whoop',
+    authUrl: 'https://api.prod.whoop.com/oauth/oauth2/auth',
+    tokenUrl: 'https://api.prod.whoop.com/oauth/oauth2/token',
+    apiBase: 'https://api.prod.whoop.com/developer/v1',
+    scope: 'read:recovery read:cycles read:workout read:sleep read:profile read:body_measurement',
+    usesOAuth2: true,
+    usesPKCE: false,
+    rateLimit: { requests: 100, window: 3600000 }
+  }
 };
 
 // ============================================
@@ -142,11 +154,14 @@ const rateLimitTracker = new Map();
 
 const checkRateLimit = (provider, userId) => {
   const key = `${provider}:${userId}`;
-  const config = PROVIDERS[provider].rateLimit;
+  const config = PROVIDERS[provider]?.rateLimit;
+  
+  if (!config) return true;
+  
   const now = Date.now();
   
   if (!rateLimitTracker.has(key)) {
-    rateLimitTracker.set(key, { count: 0, resetAt: now + config.window });
+    rateLimitTracker.set(key, { count: 1, resetAt: now + config.window });
     return true;
   }
   
@@ -158,12 +173,24 @@ const checkRateLimit = (provider, userId) => {
   }
   
   if (tracker.count >= config.requests) {
+    const minutesLeft = Math.ceil((tracker.resetAt - now) / 60000);
+    console.warn(`⚠️  Rate limit exceeded for ${provider}:${userId}. Reset in ${minutesLeft} minutes.`);
     return false;
   }
   
   tracker.count++;
   return true;
 };
+
+// Cleanup old rate limit entries every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, tracker] of rateLimitTracker.entries()) {
+    if (now > tracker.resetAt) {
+      rateLimitTracker.delete(key);
+    }
+  }
+}, 3600000);
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -179,26 +206,30 @@ const storeState = async (state, userId, provider, additionalData = {}) => {
     ...additionalData 
   };
 
+  // Try Redis first
   if (redisClient && redisReady) {
     try {
       await redisClient.setEx(
         `oauth:state:${state}`,
-        600,
+        600, // 10 minutes
         JSON.stringify(stateData)
       );
-      console.log('✅ State stored in Redis:', state);
-      return;
+      console.log('✅ State stored in Redis');
+      return true;
     } catch (error) {
-      console.error('❌ Redis store failed, using fallback:', error);
+      console.error('❌ Redis store failed:', error.message);
     }
   }
 
+  // Fallback to in-memory
   inMemoryStates.set(state, stateData);
   setTimeout(() => inMemoryStates.delete(state), 10 * 60 * 1000);
-  console.log('⚠️  State stored in memory (fallback):', state);
+  console.log('⚠️  State stored in memory (fallback)');
+  return true;
 };
 
 const verifyState = async (state) => {
+  // Try Redis first
   if (redisClient && redisReady) {
     try {
       const data = await redisClient.get(`oauth:state:${state}`);
@@ -208,18 +239,19 @@ const verifyState = async (state) => {
         return JSON.parse(data);
       }
     } catch (error) {
-      console.error('❌ Redis verify failed, checking fallback:', error);
+      console.error('❌ Redis verify failed:', error.message);
     }
   }
 
+  // Fallback to in-memory
   const data = inMemoryStates.get(state);
   if (data) {
     inMemoryStates.delete(state);
-    console.log('⚠️  State verified from memory (fallback)');
+    console.log('⚠️  State verified from memory');
     return data;
   }
 
-  console.log('❌ State not found:', state);
+  console.error('❌ State not found or expired');
   return null;
 };
 
@@ -237,6 +269,7 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
     }
   });
 
+  // Retry logic for failed requests
   instance.interceptors.response.use(
     response => response,
     async error => {
@@ -250,9 +283,11 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
         return Promise.reject(error);
       }
       
+      // Retry on 5xx errors or timeout
       if (error.response?.status >= 500 || error.code === 'ECONNABORTED') {
         config.retry += 1;
         const delay = Math.pow(2, config.retry) * 1000;
+        console.log(`🔄 Retrying request (attempt ${config.retry}) after ${delay}ms`);
         await new Promise(resolve => setTimeout(resolve, delay));
         return instance(config);
       }
@@ -270,16 +305,14 @@ const createAxiosInstance = (baseURL, timeout = 30000) => {
 
 const storeWearableTokens = async (userId, provider, tokens) => {
   try {
-    console.log('🔄 Storing tokens for:', userId, provider);
+    console.log(`🔄 Storing tokens for user ${userId}, provider: ${provider}`);
     
     const user = await User.findById(userId);
     if (!user) {
-      console.error('❌ User not found:', userId);
-      throw new Error('User not found');
+      throw new Error(`User not found: ${userId}`);
     }
 
-    console.log('📦 Current connections:', user.wearableConnections?.length || 0);
-
+    // Initialize wearableConnections if it doesn't exist
     if (!user.wearableConnections) {
       user.wearableConnections = [];
     }
@@ -308,25 +341,23 @@ const storeWearableTokens = async (userId, provider, tokens) => {
     }
 
     user.markModified('wearableConnections');
-    
     await user.save();
     
-    console.log('✅ Tokens stored successfully. Total connections:', user.wearableConnections.length);
+    console.log(`✅ Tokens stored. Total connections: ${user.wearableConnections.length}`);
     
+    // Cache the connection data
     if (redisClient && redisReady) {
       try {
         await redisClient.setEx(
           `token:${userId}:${provider}`,
-          3600,
+          3600, // 1 hour cache
           JSON.stringify(connectionData)
         );
-        console.log('✅ Cached in Redis');
       } catch (error) {
-        console.warn('⚠️ Redis cache failed:', error);
+        console.warn('⚠️ Redis cache failed:', error.message);
       }
     } else {
       inMemoryTokenCache.set(`${userId}:${provider}`, connectionData);
-      console.log('✅ Cached in memory');
     }
     
     return connectionData;
@@ -339,35 +370,43 @@ const storeWearableTokens = async (userId, provider, tokens) => {
 const getWearableConnection = async (userId, provider) => {
   const cacheKey = `token:${userId}:${provider}`;
   
+  // Try Redis cache first
   if (redisClient && redisReady) {
     try {
       const cached = await redisClient.get(cacheKey);
       if (cached) {
+        console.log('✅ Connection retrieved from Redis cache');
         return JSON.parse(cached);
       }
     } catch (error) {
-      console.warn('Redis cache read failed:', error);
+      console.warn('⚠️ Redis cache read failed:', error.message);
     }
   }
 
+  // Try in-memory cache
   const memoryCacheKey = `${userId}:${provider}`;
   if (inMemoryTokenCache.has(memoryCacheKey)) {
+    console.log('✅ Connection retrieved from memory cache');
     return inMemoryTokenCache.get(memoryCacheKey);
   }
 
+  // Fetch from database
   const user = await User.findById(userId);
-  if (!user) return null;
+  if (!user || !user.wearableConnections) {
+    return null;
+  }
 
-  const connection = user.wearableConnections?.find(
+  const connection = user.wearableConnections.find(
     conn => conn.provider === provider
   );
 
   if (connection) {
+    // Cache for future requests
     if (redisClient && redisReady) {
       try {
         await redisClient.setEx(cacheKey, 3600, JSON.stringify(connection));
       } catch (error) {
-        console.warn('Redis cache write failed:', error);
+        console.warn('⚠️ Redis cache write failed:', error.message);
       }
     } else {
       inMemoryTokenCache.set(memoryCacheKey, connection);
@@ -380,7 +419,11 @@ const getWearableConnection = async (userId, provider) => {
 const storeWearableData = async (userId, provider, data, date) => {
   try {
     const wearableData = await WearableData.findOneAndUpdate(
-      { userId, provider, date: new Date(date) },
+      { 
+        userId, 
+        provider, 
+        date: new Date(date) 
+      },
       {
         $set: {
           ...data,
@@ -388,73 +431,87 @@ const storeWearableData = async (userId, provider, data, date) => {
           syncStatus: 'success'
         }
       },
-      { upsert: true, new: true }
+      { 
+        upsert: true, 
+        new: true,
+        runValidators: true
+      }
     );
 
+    console.log(`✅ Wearable data stored for ${date}`);
     return wearableData;
   } catch (error) {
-    console.error('Store wearable data error:', error);
+    console.error('❌ Store wearable data error:', error);
     throw error;
   }
 };
 
 /**
- * ✅ Get most recent complete wearable data with smart fallback
+ * Get most recent complete wearable data with smart fallback
  */
 const getLatestCompleteData = async (userId, provider) => {
   const today = new Date().toISOString().split('T')[0];
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   
-  const todayData = await WearableData.findOne({
-    userId,
-    provider,
-    date: new Date(today)
-  });
+  const [todayData, yesterdayData] = await Promise.all([
+    WearableData.findOne({
+      userId,
+      provider,
+      date: new Date(today)
+    }),
+    WearableData.findOne({
+      userId,
+      provider,
+      date: new Date(yesterday)
+    })
+  ]);
   
+  // Prefer today's data if it has meaningful activity or sleep
   if (todayData && (todayData.steps > 100 || todayData.sleepDuration > 0)) {
-    console.log('✅ Using today\'s data (has activity/sleep)');
+    console.log('✅ Using today\'s data');
     return todayData;
   }
   
-  const yesterdayData = await WearableData.findOne({
-    userId,
-    provider,
-    date: new Date(yesterday)
-  });
-  
+  // Fall back to yesterday if today is incomplete
   if (yesterdayData) {
     console.log('⚠️ Using yesterday\'s data (today incomplete)');
+    return yesterdayData;
   }
   
-  return yesterdayData || todayData;
+  // Return today's data even if empty (better than nothing)
+  return todayData;
 };
 
 // ============================================
-// RECOVERY CALCULATION
+// SCORE CALCULATION FUNCTIONS
 // ============================================
 
 const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency, breathingRate) => {
   let score = 0;
   let totalWeight = 0;
   
+  // HRV (35% weight)
   if (hrv && hrv > 0) {
     const hrvScore = Math.min((hrv / 80) * 100, 100);
     score += hrvScore * 0.35;
     totalWeight += 0.35;
   }
   
+  // Resting HR (25% weight)
   if (restingHR && restingHR > 0) {
     const rhrScore = Math.max(0, 100 - ((restingHR - 40) / 40 * 100));
     score += Math.min(rhrScore, 100) * 0.25;
     totalWeight += 0.25;
   }
   
+  // Sleep (25% weight)
   if (sleepQuality && sleepEfficiency) {
     const sleepScore = (sleepQuality * 10 * 0.6) + (sleepEfficiency * 0.4);
     score += sleepScore * 0.25;
     totalWeight += 0.25;
   }
   
+  // Breathing rate (15% weight)
   if (breathingRate && breathingRate > 0) {
     const breathingScore = breathingRate >= 12 && breathingRate <= 20 ? 100 : 
                           Math.max(0, 100 - Math.abs(16 - breathingRate) * 10);
@@ -462,11 +519,7 @@ const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency, b
     totalWeight += 0.15;
   }
   
-  if (totalWeight > 0) {
-    score = score / totalWeight;
-  }
-  
-  return Math.round(Math.min(Math.max(score, 0), 100));
+  return totalWeight > 0 ? Math.round(Math.min(Math.max(score / totalWeight, 0), 100)) : 0;
 };
 
 const calculateTrainingLoad = (activeMinutes, caloriesBurned, steps, activeZoneMinutes, cardioLoad) => {
@@ -507,11 +560,11 @@ const calculateTrainingLoad = (activeMinutes, caloriesBurned, steps, activeZoneM
 };
 
 // ============================================
-// 🔥 FITBIT DATA FETCHING - 100% GUARANTEED DELIVERY
+// FITBIT DATA FETCHING
 // ============================================
 
 /**
- * 🛡️ SAFE API CALL - Never throws, always returns data or null
+ * Safe API call wrapper - never throws on API errors
  */
 const safeFitbitCall = async (accessToken, endpoint, description) => {
   const config = PROVIDERS.fitbit;
@@ -523,11 +576,11 @@ const safeFitbitCall = async (accessToken, endpoint, description) => {
       headers: { 'Authorization': `Bearer ${accessToken}` },
       timeout: 10000
     });
-    console.log(`✅ ${description} fetched successfully`);
+    console.log(`✅ ${description} fetched`);
     return response.data;
   } catch (error) {
     if (error.response?.status === 401) {
-      console.error(`❌ ${description}: Unauthorized (token expired)`);
+      console.error(`❌ ${description}: Token expired`);
       throw new Error('TOKEN_EXPIRED');
     }
     console.warn(`⚠️ ${description} unavailable:`, error.message);
@@ -536,15 +589,12 @@ const safeFitbitCall = async (accessToken, endpoint, description) => {
 };
 
 /**
- * 🔥 COMPREHENSIVE FITBIT DATA FETCH - GUARANTEED DELIVERY
- * Returns partial data even if some endpoints fail
+ * Comprehensive Fitbit data fetch with guaranteed delivery
  */
 const fetchFitbitDataEnhanced = async (accessToken, date) => {
-  console.log('🔄 Starting comprehensive Fitbit data fetch for', date);
+  console.log(`🔄 Fetching comprehensive Fitbit data for ${date}`);
   
-  // Initialize result object with safe defaults
   const result = {
-    // Basic Activity (REQUIRED - will fail sync if this fails)
     steps: 0,
     distance: 0,
     caloriesBurned: 0,
@@ -553,16 +603,10 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
     lightlyActiveMinutes: 0,
     floors: 0,
     elevation: 0,
-    
-    // Fitbit Proprietary
     activeZoneMinutes: 0,
     cardioLoad: 0,
-    
-    // Heart Rate
     restingHeartRate: 0,
     heartRateZones: [],
-    
-    // Sleep
     sleepDuration: 0,
     deepSleep: 0,
     lightSleep: 0,
@@ -574,8 +618,6 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
     sleepScore: 0,
     sleepStartTime: null,
     sleepEndTime: null,
-    
-    // Advanced Metrics (optional)
     hrv: null,
     breathingRate: null,
     deepSleepBreathingRate: null,
@@ -584,12 +626,8 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
     spo2Max: null,
     vo2Max: null,
     cardioFitnessScore: null,
-    
-    // Calculated Scores
     recoveryScore: 0,
     trainingLoad: 0,
-    
-    // Metadata
     dataQuality: {
       activity: false,
       heartRate: false,
@@ -602,20 +640,17 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
   };
   
   try {
-    // ============================================
-    // PHASE 1: CRITICAL DATA (Activity Summary)
-    // ============================================
+    // PHASE 1: Activity (CRITICAL)
     const activity = await safeFitbitCall(
       accessToken,
-      `/1/user/-/activities/date/${date}.json`,
-      'Activity Summary'
+      `/user/-/activities/date/${date}.json`,
+      'Activity'
     );
     
     if (!activity || !activity.summary) {
       throw new Error('Critical activity data unavailable');
     }
     
-    // Extract activity data
     result.steps = activity.summary.steps || 0;
     result.distance = activity.summary.distances?.[0]?.distance || 0;
     result.caloriesBurned = activity.summary.caloriesOut || 0;
@@ -628,121 +663,86 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
     result.cardioLoad = activity.summary.cardioFitnessScore || 0;
     result.dataQuality.activity = true;
     
-    console.log('✅ PHASE 1 COMPLETE: Activity data captured');
-    
-    // ============================================
-    // PHASE 2: HEART RATE DATA (High Priority)
-    // ============================================
-    const heartRateData = await safeFitbitCall(
+    // PHASE 2: Heart Rate
+    const heartRate = await safeFitbitCall(
       accessToken,
-      `/1/user/-/activities/heart/date/${date}/1d.json`,
-      'Heart Rate Data'
+      `/user/-/activities/heart/date/${date}/1d.json`,
+      'Heart Rate'
     );
     
-    if (heartRateData && heartRateData['activities-heart']?.[0]) {
-      const hrData = heartRateData['activities-heart'][0].value;
-      result.restingHeartRate = hrData.restingHeartRate || 0;
-      result.heartRateZones = (hrData.heartRateZones || []).map(zone => ({
-        name: zone.name,
-        min: zone.min,
-        max: zone.max,
-        minutes: zone.minutes,
-        caloriesOut: zone.caloriesOut || 0
+    if (heartRate?.['activities-heart']?.[0]) {
+      const hr = heartRate['activities-heart'][0].value;
+      result.restingHeartRate = hr.restingHeartRate || 0;
+      result.heartRateZones = (hr.heartRateZones || []).map(z => ({
+        name: z.name,
+        min: z.min,
+        max: z.max,
+        minutes: z.minutes,
+        caloriesOut: z.caloriesOut || 0
       }));
       result.dataQuality.heartRate = true;
-      console.log('✅ PHASE 2 COMPLETE: Heart rate data captured');
     }
     
-    // ============================================
-    // PHASE 3: SLEEP DATA (High Priority)
-    // ============================================
+    // PHASE 3: Sleep
     const sleep = await safeFitbitCall(
       accessToken,
       `/1.2/user/-/sleep/date/${date}.json`,
-      'Sleep Data'
+      'Sleep'
     );
     
-    if (sleep && sleep.sleep?.[0]) {
-      const sleepData = sleep.sleep[0];
-      result.sleepDuration = sleepData.minutesAsleep || 0;
-      result.deepSleep = sleepData.levels?.summary?.deep?.minutes || 0;
-      result.remSleep = sleepData.levels?.summary?.rem?.minutes || 0;
-      result.lightSleep = sleepData.levels?.summary?.light?.minutes || 0;
-      result.awakeTime = sleepData.levels?.summary?.wake?.minutes || 0;
-      result.restlessMinutes = sleepData.levels?.summary?.restless?.minutes || 0;
-      result.restlessCount = sleepData.levels?.summary?.restless?.count || 0;
-      result.sleepEfficiency = sleepData.efficiency || 0;
-      result.sleepStartTime = sleepData.startTime || null;
-      result.sleepEndTime = sleepData.endTime || null;
+    if (sleep?.sleep?.[0]) {
+      const s = sleep.sleep[0];
+      result.sleepDuration = s.minutesAsleep || 0;
+      result.deepSleep = s.levels?.summary?.deep?.minutes || 0;
+      result.remSleep = s.levels?.summary?.rem?.minutes || 0;
+      result.lightSleep = s.levels?.summary?.light?.minutes || 0;
+      result.awakeTime = s.levels?.summary?.wake?.minutes || 0;
+      result.restlessMinutes = s.levels?.summary?.restless?.minutes || 0;
+      result.restlessCount = s.levels?.summary?.restless?.count || 0;
+      result.sleepEfficiency = s.efficiency || 0;
+      result.sleepStartTime = s.startTime || null;
+      result.sleepEndTime = s.endTime || null;
       
-      // Calculate sleep score
       if (result.sleepDuration > 0) {
         result.sleepScore = Math.min((result.sleepDuration / 480) * 100, 100);
       }
       
       result.dataQuality.sleep = true;
-      console.log('✅ PHASE 3 COMPLETE: Sleep data captured');
     }
     
-    // ============================================
-    // PHASE 4: ADVANCED METRICS (Optional - Won't fail sync)
-    // ============================================
+    // PHASE 4: Advanced Metrics (optional)
+    const [hrv, breathingRate, spo2, cardioFitness] = await Promise.all([
+      safeFitbitCall(accessToken, `/user/-/hrv/date/${date}.json`, 'HRV'),
+      safeFitbitCall(accessToken, `/user/-/br/date/${date}.json`, 'Breathing'),
+      safeFitbitCall(accessToken, `/user/-/spo2/date/${date}.json`, 'SpO2'),
+      safeFitbitCall(accessToken, `/user/-/cardioscore/date/${date}.json`, 'Cardio Fitness')
+    ]);
     
-    // HRV
-    const hrv = await safeFitbitCall(
-      accessToken,
-      `/1/user/-/hrv/date/${date}.json`,
-      'HRV'
-    );
-    if (hrv && hrv.hrv?.[0]) {
+    if (hrv?.hrv?.[0]) {
       result.hrv = hrv.hrv[0].value?.dailyRmssd || null;
       result.dataQuality.hrv = !!result.hrv;
     }
     
-    // Breathing Rate
-    const breathingRate = await safeFitbitCall(
-      accessToken,
-      `/1/user/-/br/date/${date}.json`,
-      'Breathing Rate'
-    );
-    if (breathingRate && breathingRate.br?.[0]) {
-      const brData = breathingRate.br[0];
-      result.breathingRate = brData.value?.breathingRate || null;
-      result.deepSleepBreathingRate = brData.value?.deepSleepSummary?.breathingRate || null;
+    if (breathingRate?.br?.[0]) {
+      result.breathingRate = breathingRate.br[0].value?.breathingRate || null;
+      result.deepSleepBreathingRate = breathingRate.br[0].value?.deepSleepSummary?.breathingRate || null;
       result.dataQuality.breathingRate = !!result.breathingRate;
     }
     
-    // SpO2
-    const spo2 = await safeFitbitCall(
-      accessToken,
-      `/1/user/-/spo2/date/${date}.json`,
-      'SpO2'
-    );
-    if (spo2 && spo2.length > 0 && spo2[0].value) {
+    if (spo2?.[0]?.value) {
       result.spo2Avg = spo2[0].value.avg || null;
       result.spo2Min = spo2[0].value.min || null;
       result.spo2Max = spo2[0].value.max || null;
       result.dataQuality.spo2 = !!result.spo2Avg;
     }
     
-    // Cardio Fitness
-    const cardioFitness = await safeFitbitCall(
-      accessToken,
-      `/1/user/-/cardioscore/date/${date}.json`,
-      'Cardio Fitness'
-    );
-    if (cardioFitness && cardioFitness.cardioScore?.[0]) {
+    if (cardioFitness?.cardioScore?.[0]) {
       result.vo2Max = cardioFitness.cardioScore[0].value?.vo2Max || null;
       result.cardioFitnessScore = cardioFitness.cardioScore[0].value?.score || null;
       result.dataQuality.cardioFitness = !!result.vo2Max;
     }
     
-    console.log('✅ PHASE 4 COMPLETE: Advanced metrics captured');
-    
-    // ============================================
-    // PHASE 5: CALCULATE SCORES
-    // ============================================
-    
+    // Calculate scores
     const sleepQuality = result.sleepDuration > 0 ? Math.min((result.sleepDuration / 480) * 10, 10) : 0;
     
     result.recoveryScore = calculateRecoveryScore(
@@ -761,9 +761,7 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
       result.cardioLoad
     );
     
-    console.log('✅ ALL PHASES COMPLETE - Data Quality:', result.dataQuality);
-    console.log('📊 Final Scores - Recovery:', result.recoveryScore, 'Training Load:', result.trainingLoad);
-    
+    console.log('✅ Fitbit data complete:', result.dataQuality);
     return result;
     
   } catch (error) {
@@ -771,14 +769,12 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
       throw error;
     }
     
-    // If critical data failed, throw error
     if (!result.dataQuality.activity) {
-      console.error('❌ Critical error: Activity data unavailable');
+      console.error('❌ Critical activity data failed');
       throw new Error('Failed to fetch critical activity data');
     }
     
-    // Return partial data if we have at least activity
-    console.warn('⚠️ Returning partial data due to error:', error.message);
+    console.warn('⚠️ Returning partial data');
     return result;
   }
 };
@@ -786,6 +782,7 @@ const fetchFitbitDataEnhanced = async (accessToken, date) => {
 // ============================================
 // POLAR DATA FETCHING
 // ============================================
+
 const fetchPolarData = async (accessToken, userId) => {
   const config = PROVIDERS.polar;
   const api = createAxiosInstance(config.apiBase);
@@ -795,6 +792,7 @@ const fetchPolarData = async (accessToken, userId) => {
   };
 
   try {
+    // Register user (if not already)
     await api.post('/users', { 'member-id': userId }, { headers }).catch(() => {});
 
     const [exercises, activity] = await Promise.all([
@@ -808,161 +806,25 @@ const fetchPolarData = async (accessToken, userId) => {
       steps: latestActivity.steps || 0,
       caloriesBurned: latestActivity.calories || 0,
       activeMinutes: latestActivity['active-time'] ? Math.floor(latestActivity['active-time'] / 60) : 0,
-      rawData: { exercises: exercises.data, activity: activity.data }
+      rawData: { 
+        exercises: exercises.data, 
+        activity: activity.data 
+      }
     };
   } catch (error) {
-    console.error('Polar fetch error:', error);
+    console.error('❌ Polar fetch error:', error);
     throw error;
   }
 };
 
 // ============================================
-// OAUTH 2.0 FLOW
-// ============================================
-
-const initiateOAuth2 = async (req, res) => {
-  try {
-    const { provider } = req.params;
-    const userId = req.user.id;
-    
-    const config = PROVIDERS[provider];
-    if (!config || !config.usesOAuth2) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Invalid or unsupported provider' 
-      });
-    }
-
-    if (!config.clientId || !config.clientSecret) {
-      return res.status(500).json({ 
-        success: false,
-        error: `${config.name} credentials not configured` 
-      });
-    }
-
-    const state = generateState();
-    const additionalData = {};
-    
-    let codeChallenge = null;
-    if (config.usesPKCE) {
-      const codeVerifier = generateCodeVerifier();
-      codeChallenge = generateCodeChallenge(codeVerifier);
-      additionalData.codeVerifier = codeVerifier;
-      
-      console.log('🔐 PKCE Generated for', provider);
-    }
-    
-    await storeState(state, userId, provider, additionalData);
-
-    const authParams = {
-      client_id: config.clientId,
-      response_type: 'code',
-      redirect_uri: config.redirectUri,
-      scope: config.scope,
-      state: state,
-      prompt: 'login consent'
-    };
-    
-    if (config.usesPKCE && codeChallenge) {
-      authParams.code_challenge = codeChallenge;
-      authParams.code_challenge_method = 'S256';
-    }
-
-    const authUrl = `${config.authUrl}?${new URLSearchParams(authParams).toString()}`;
-    
-    console.log('📤 OAuth URL Generated for', provider);
-    
-    res.json({ 
-      success: true,
-      authUrl,
-      provider: config.name
-    });
-  } catch (error) {
-    console.error('OAuth initiation error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Failed to initiate OAuth' 
-    });
-  }
-};
-
-const handleOAuth2Callback = async (req, res) => {
-  try {
-    const { provider } = req.params;
-    const { code, state, error } = req.query;
-
-    console.log('📥 OAuth Callback:', provider);
-
-    if (error) {
-      console.error('❌ OAuth Error:', error);
-      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=oauth_error`);
-    }
-
-    const stateData = await verifyState(state);
-    if (!stateData) {
-      console.error('❌ Invalid state');
-      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=invalid_state`);
-    }
-
-    console.log('✅ State verified');
-
-    const config = PROVIDERS[provider];
-    const { userId, codeVerifier } = stateData;
-
-    const tokenRequestBody = {
-      grant_type: 'authorization_code',
-      code: code,
-      redirect_uri: config.redirectUri,
-      client_id: config.clientId
-    };
-    
-    if (config.usesPKCE && codeVerifier) {
-      tokenRequestBody.code_verifier = codeVerifier;
-      console.log('🔐 Using PKCE for token exchange');
-    } else {
-      tokenRequestBody.client_secret = config.clientSecret;
-    }
-
-    console.log('📤 Requesting token from', provider);
-
-    const tokenResponse = await axios.post(
-      config.tokenUrl,
-      new URLSearchParams(tokenRequestBody),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': buildBasicAuth(config.clientId, config.clientSecret)
-        }
-      }
-    );
-
-    console.log('✅ Token received');
-
-    const { access_token, refresh_token, expires_in, user_id, scope } = tokenResponse.data;
-
-    await storeWearableTokens(userId, provider, {
-      accessToken: access_token,
-      refreshToken: refresh_token,
-      expiresIn: expires_in,
-      externalUserId: user_id,
-      scope: scope
-    });
-
-    console.log('✅ Tokens stored in database');
-
-    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
-  } catch (error) {
-    console.error('❌ OAuth callback error:', error.response?.data || error.message);
-    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=auth_failed`);
-  }
-};
-
-// ============================================
-// 🔥 100% GUARANTEED SYNC
+// TOKEN REFRESH
 // ============================================
 
 const refreshAccessToken = async (userId, provider) => {
   try {
+    console.log(`🔄 Refreshing token for ${provider}`);
+    
     const connection = await getWearableConnection(userId, provider);
     if (!connection || !connection.refreshToken) {
       throw new Error('No refresh token available');
@@ -994,19 +856,164 @@ const refreshAccessToken = async (userId, provider) => {
 
     await storeWearableTokens(userId, provider, tokens);
     
+    console.log('✅ Token refreshed successfully');
     return tokens;
   } catch (error) {
-    console.error('Token refresh error:', error);
+    console.error('❌ Token refresh failed:', error.message);
     throw error;
   }
 };
+
+// ============================================
+// OAUTH FLOW
+// ============================================
+
+const initiateOAuth2 = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const userId = req.user.id;
+    
+    const config = PROVIDERS[provider];
+    if (!config || !config.usesOAuth2) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid or unsupported provider' 
+      });
+    }
+
+    if (!config.clientId || !config.clientSecret) {
+      return res.status(500).json({ 
+        success: false,
+        error: `${config.name} credentials not configured` 
+      });
+    }
+
+    const state = generateState();
+    const additionalData = {};
+    
+    let codeChallenge = null;
+    if (config.usesPKCE) {
+      const codeVerifier = generateCodeVerifier();
+      codeChallenge = generateCodeChallenge(codeVerifier);
+      additionalData.codeVerifier = codeVerifier;
+      console.log('🔐 PKCE enabled');
+    }
+    
+    await storeState(state, userId, provider, additionalData);
+
+    const authParams = {
+      client_id: config.clientId,
+      response_type: 'code',
+      redirect_uri: config.redirectUri,
+      scope: config.scope,
+      state: state,
+      prompt: 'login consent'
+    };
+    
+    if (config.usesPKCE && codeChallenge) {
+      authParams.code_challenge = codeChallenge;
+      authParams.code_challenge_method = 'S256';
+    }
+
+    const authUrl = `${config.authUrl}?${new URLSearchParams(authParams).toString()}`;
+    
+    console.log(`✅ OAuth URL generated for ${provider}`);
+    
+    res.json({ 
+      success: true,
+      authUrl,
+      provider: config.name
+    });
+  } catch (error) {
+    console.error('❌ OAuth initiation error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to initiate OAuth' 
+    });
+  }
+};
+
+const handleOAuth2Callback = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const { code, state, error } = req.query;
+
+    console.log(`📥 OAuth callback for ${provider}`);
+
+    if (error) {
+      console.error('❌ OAuth error:', error);
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=oauth_error`);
+    }
+
+    const stateData = await verifyState(state);
+    if (!stateData) {
+      console.error('❌ Invalid state');
+      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=invalid_state`);
+    }
+
+    console.log('✅ State verified');
+
+    const config = PROVIDERS[provider];
+    const { userId, codeVerifier } = stateData;
+
+    const tokenRequestBody = {
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: config.redirectUri,
+      client_id: config.clientId
+    };
+    
+    if (config.usesPKCE && codeVerifier) {
+      tokenRequestBody.code_verifier = codeVerifier;
+      console.log('🔐 Using PKCE');
+    } else {
+      tokenRequestBody.client_secret = config.clientSecret;
+    }
+
+    console.log('📤 Requesting token');
+
+    const tokenResponse = await axios.post(
+      config.tokenUrl,
+      new URLSearchParams(tokenRequestBody),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': buildBasicAuth(config.clientId, config.clientSecret)
+        }
+      }
+    );
+
+    console.log('✅ Token received');
+
+    const { access_token, refresh_token, expires_in, user_id, scope } = tokenResponse.data;
+
+    await storeWearableTokens(userId, provider, {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresIn: expires_in,
+      externalUserId: user_id,
+      scope: scope
+    });
+
+    console.log('✅ Connection complete');
+
+    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
+  } catch (error) {
+    console.error('❌ OAuth callback error:', error.response?.data || error.message);
+    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=auth_failed`);
+  }
+};
+
+// ============================================
+// SYNC ENDPOINT
+// ============================================
 
 const syncWearableData = async (req, res) => {
   try {
     const { provider } = req.params;
     const userId = req.user.id;
 
-    console.log('🔄 Starting 100% guaranteed sync for:', provider);
+    console.log(`🔄 Sync initiated: ${provider} for user ${userId}`);
 
     if (!PROVIDERS[provider]) {
       return res.status(400).json({ 
@@ -1018,14 +1025,14 @@ const syncWearableData = async (req, res) => {
     if (!PROVIDERS[provider].clientId) {
       return res.status(501).json({ 
         success: false,
-        error: `${PROVIDERS[provider].name} not configured. Please contact support.` 
+        error: `${PROVIDERS[provider].name} not configured` 
       });
     }
 
     if (!checkRateLimit(provider, userId)) {
       return res.status(429).json({ 
         success: false,
-        error: 'Rate limit exceeded. Please try again in a few minutes.' 
+        error: 'Rate limit exceeded. Please try again later.' 
       });
     }
 
@@ -1033,35 +1040,34 @@ const syncWearableData = async (req, res) => {
     if (!connection || !connection.connected) {
       return res.status(404).json({ 
         success: false,
-        error: 'Device not connected. Please connect your wearable first.',
+        error: 'Device not connected',
         needsConnection: true
       });
     }
 
     console.log('✅ Connection verified');
 
-    // Token refresh logic
+    // Check token expiration and refresh if needed
     if (connection.expiresAt && new Date() >= new Date(connection.expiresAt)) {
-      console.log('🔄 Token expired, refreshing...');
+      console.log('🔄 Token expired, refreshing');
       try {
         const newTokens = await refreshAccessToken(userId, provider);
         connection.accessToken = newTokens.accessToken;
-        console.log('✅ Token refreshed successfully');
+        console.log('✅ Token refreshed');
       } catch (refreshError) {
         console.error('❌ Token refresh failed:', refreshError);
         return res.status(401).json({ 
           success: false,
-          error: 'Session expired. Please reconnect your device.',
+          error: 'Session expired. Please reconnect.',
           needsReconnect: true
         });
       }
     }
 
-    // Fetch data for last 2 days
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-    console.log('📡 Fetching data for', yesterday, 'and', today);
+    console.log(`📡 Fetching data for ${yesterday} and ${today}`);
 
     let syncResults = {
       success: true,
@@ -1073,7 +1079,6 @@ const syncWearableData = async (req, res) => {
 
     try {
       if (provider === 'fitbit') {
-        // Fetch both days
         const [yesterdayData, todayData] = await Promise.all([
           fetchFitbitDataEnhanced(connection.accessToken, yesterday)
             .catch(err => {
@@ -1087,7 +1092,6 @@ const syncWearableData = async (req, res) => {
             })
         ]);
         
-        // Store both
         if (yesterdayData) {
           await storeWearableData(userId, provider, yesterdayData, yesterday);
           syncResults.syncedDates.push(yesterday);
@@ -1099,7 +1103,6 @@ const syncWearableData = async (req, res) => {
           syncResults.syncedDates.push(today);
           syncResults.dataQuality.today = todayData.dataQuality;
           
-          // Use today's data for summary
           syncResults.summary = {
             steps: todayData.steps,
             sleep: Math.floor(todayData.sleepDuration / 60),
@@ -1108,12 +1111,11 @@ const syncWearableData = async (req, res) => {
           };
         }
         
-        // If neither day succeeded, return error
         if (!yesterdayData && !todayData) {
-          throw new Error('Unable to fetch data for any date');
+          throw new Error('Unable to fetch data');
         }
         
-        console.log('✅ Sync complete:', syncResults.syncedDates.length, 'days synced');
+        console.log(`✅ Sync complete: ${syncResults.syncedDates.length} days`);
         
       } else if (provider === 'polar') {
         const data = await fetchPolarData(connection.accessToken, userId);
@@ -1134,14 +1136,14 @@ const syncWearableData = async (req, res) => {
       if (fetchError.message === 'TOKEN_EXPIRED') {
         return res.status(401).json({
           success: false,
-          error: 'Session expired. Please reconnect your device.',
+          error: 'Session expired. Please reconnect.',
           needsReconnect: true
         });
       }
       
       return res.status(500).json({
         success: false,
-        error: 'Failed to sync data. Please try again.',
+        error: 'Failed to sync data',
         details: process.env.NODE_ENV === 'development' ? fetchError.message : undefined
       });
     }
@@ -1151,7 +1153,7 @@ const syncWearableData = async (req, res) => {
     
     return res.status(500).json({ 
       success: false,
-      error: 'Sync failed. Please try again.',
+      error: 'Sync failed',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -1184,7 +1186,7 @@ const getConnections = async (req, res) => {
       connections 
     });
   } catch (error) {
-    console.error('Get connections error:', error);
+    console.error('❌ Get connections error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch connections' 
@@ -1203,7 +1205,6 @@ const getWearableData = async (req, res) => {
       const twoDaysAgo = new Date();
       twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
       query.date = { $gte: twoDaysAgo };
-      console.log('⚠️ No date filter specified, defaulting to last 2 days');
     } else {
       if (provider) {
         query.provider = provider;
@@ -1228,7 +1229,7 @@ const getWearableData = async (req, res) => {
       data 
     });
   } catch (error) {
-    console.error('Get wearable data error:', error);
+    console.error('❌ Get data error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch data' 
@@ -1253,6 +1254,7 @@ const manualEntry = async (req, res) => {
       data: wearableData 
     });
   } catch (error) {
+    console.error('❌ Manual entry error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to save entry' 
@@ -1275,6 +1277,7 @@ const disconnect = async (req, res) => {
       user.markModified('wearableConnections');
       await user.save();
       
+      // Clear cache
       if (redisClient && redisReady) {
         await redisClient.del(`token:${userId}:${provider}`);
       }
@@ -1286,6 +1289,7 @@ const disconnect = async (req, res) => {
       message: `${PROVIDERS[provider]?.name || provider} disconnected` 
     });
   } catch (error) {
+    console.error('❌ Disconnect error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to disconnect' 
@@ -1320,11 +1324,7 @@ const getInsights = async (req, res) => {
         sleep: Math.round(data.reduce((sum, d) => sum + (d.sleepDuration || 0), 0) / data.length),
         activeMinutes: Math.round(data.reduce((sum, d) => sum + (d.activeMinutes || 0), 0) / data.length),
         restingHR: Math.round(data.reduce((sum, d) => sum + (d.restingHeartRate || 0), 0) / data.filter(d => d.restingHeartRate).length) || 0,
-        recoveryScore: Math.round(data.reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / data.filter(d => d.recoveryScore).length) || 0,
-        activeZoneMinutes: Math.round(data.reduce((sum, d) => sum + (d.activeZoneMinutes || 0), 0) / data.length),
-        breathingRate: data.filter(d => d.breathingRate).length > 0 
-          ? Math.round(data.reduce((sum, d) => sum + (d.breathingRate || 0), 0) / data.filter(d => d.breathingRate).length)
-          : null
+        recoveryScore: Math.round(data.reduce((sum, d) => sum + (d.recoveryScore || 0), 0) / data.filter(d => d.recoveryScore).length) || 0
       },
       trends: {
         steps: data.length > 1 ? (data[data.length - 1].steps > data[0].steps ? 'improving' : 'declining') : 'stable'
@@ -1338,6 +1338,7 @@ const getInsights = async (req, res) => {
       insights 
     });
   } catch (error) {
+    console.error('❌ Insights error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Failed to generate insights' 
@@ -1348,9 +1349,13 @@ const getInsights = async (req, res) => {
 const initiateGarminOAuth = (req, res) => {
   res.status(501).json({ 
     success: false,
-    error: 'Garmin not configured' 
+    error: 'Garmin integration coming soon' 
   });
 };
+
+// ============================================
+// EXPORTS
+// ============================================
 
 module.exports = {
   initiateOAuth2,
