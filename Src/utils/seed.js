@@ -6,7 +6,7 @@ const User = require('../models/User');
 const seedData = async () => {
   try {
     // Connect to MongoDB
-   const dbUrl = 'mongodb+srv://Coastalowner:owner123@cluster0.d0vshy2.mongodb.net/coastal-fitness?retryWrites=true&w=majority&appName=Cluster0';
+   const dbUrl = process.env.MONGODB_URI;
     console.log('🔗 Connecting to MongoDB:', dbUrl.replace(/mongodb\+srv:\/\/.*@/, 'mongodb://***@'));
     
     await mongoose.connect(dbUrl);
