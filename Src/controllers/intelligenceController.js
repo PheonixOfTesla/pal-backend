@@ -139,7 +139,7 @@ exports.getHealthMetrics = async (req, res) => {
         console.log('🤖 Generating Elite AI Coaching...');
         
         const model = genAI.getGenerativeModel({ 
-          model: 'gemini-pro',
+         model: 'gemini-pro-latest',  // ✅ FIXED!
           generationConfig: {
             temperature: 0.7,
             topK: 40,
