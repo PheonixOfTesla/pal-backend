@@ -167,12 +167,12 @@ exports.getHealthMetrics = async (req, res) => {
         console.log('🤖 Generating Elite AI Coaching with Gemini 2.5 Pro...');
         
         const model = genAI.getGenerativeModel({ 
-          model: 'gemini-2.5-pro-latest',  // ✅ BEST MODEL - Most Advanced
+          model: 'models/gemini-2.5-pro',  // ✅ EXACT model name from your API
           generationConfig: {
             temperature: 0.7,
-            topK: 40,
+            topK: 64,
             topP: 0.95,
-            maxOutputTokens: 2048,  // Increased for detailed insights
+            maxOutputTokens: 2048,
           }
         });
         
