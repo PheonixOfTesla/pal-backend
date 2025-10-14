@@ -7,12 +7,14 @@ const Nutrition = require('../models/Nutrition');
 const Goal = require('../models/Goal');
 const { getLatestCompleteData } = require('./wearableController');
 
-// Initialize Google AI
+// Initialize Google AI with Gemini 2.5 Pro
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
 
 /**
- * ✅ CLOCKWORK ELITE INTELLIGENCE ENGINE
- * Real calculations, no guessing, elite-level AI coaching
+ * ✅ CLOCKWORK ELITE INTELLIGENCE ENGINE - COMPLETE FIXED VERSION
+ * - Fixed AI model: gemini-2.5-pro-latest (BEST)
+ * - Fixed data fetching: Smart fallback from history
+ * - Fixed insights: Always returns data
  */
 exports.getHealthMetrics = async (req, res) => {
   try {
@@ -21,11 +23,38 @@ exports.getHealthMetrics = async (req, res) => {
     console.log('🧠 ClockWork Intelligence: Loading data for', userId);
     
     // ============================================
-    // 1. FETCH ALL DATA (PARALLEL FOR SPEED)
+    // 1. FETCH ALL DATA - SMARTER APPROACH
     // ============================================
+    
+    // First, get 30-day wearable history (this is reliable)
+    const last30DaysWearable = await WearableData.find({
+      userId: userId,
+      date: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+    }).sort('-date').lean();
+    
+    console.log(`📊 Found ${last30DaysWearable.length} days of wearable data`);
+    
+    // Smart fallback: use most recent complete data from history
+    let wearableData = null;
+    if (last30DaysWearable.length > 0) {
+      // Find most recent day with meaningful data (prefer today, fallback to yesterday)
+      wearableData = last30DaysWearable.find(d => 
+        d.steps > 100 || d.sleepDuration > 0 || d.recoveryScore > 0
+      ) || last30DaysWearable[0]; // Use most recent even if incomplete
+      
+      console.log(`✅ Using data from ${wearableData.date}: ${wearableData.steps} steps, ${wearableData.sleepDuration}min sleep`);
+    } else {
+      console.log('⚠️ No wearable data found - trying live fetch');
+      // Try live fetch as last resort
+      try {
+        wearableData = await getLatestCompleteData(userId, 'fitbit');
+      } catch (err) {
+        console.log('❌ Live fetch failed:', err.message);
+      }
+    }
+    
+    // Fetch remaining data
     const [
-      wearableData,
-      last30DaysWearable,
       last7DaysWorkouts,
       last30DaysWorkouts,
       allMeasurements,
@@ -33,13 +62,6 @@ exports.getHealthMetrics = async (req, res) => {
       activeGoals,
       completedGoals
     ] = await Promise.all([
-      getLatestCompleteData(userId, 'fitbit').catch(() => null),
-      
-      WearableData.find({
-        userId: userId,
-        date: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-      }).sort('-date').lean(),
-      
       Workout.find({ 
         clientId: userId,
         scheduledDate: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
@@ -129,22 +151,28 @@ exports.getHealthMetrics = async (req, res) => {
     };
     
     // ============================================
-    // 4. GENERATE ELITE AI COACHING
+    // 4. GENERATE ELITE AI COACHING (ALWAYS TRY)
     // ============================================
     
     let aiInsights = null;
     
-    if (process.env.GOOGLE_AI_API_KEY && hasMinimumDataForAI(recoveryAnalysis, trainingAnalysis, nutritionAnalysis)) {
+    // Always attempt AI if we have ANY data
+    const hasAnyData = recoveryAnalysis.score > 0 || 
+                       trainingAnalysis.score > 0 || 
+                       nutritionAnalysis.score > 0 ||
+                       goalAnalysis.score > 0;
+    
+    if (process.env.GOOGLE_AI_API_KEY && hasAnyData) {
       try {
-        console.log('🤖 Generating Elite AI Coaching...');
+        console.log('🤖 Generating Elite AI Coaching with Gemini 2.5 Pro...');
         
         const model = genAI.getGenerativeModel({ 
-         model: 'gemini-pro-latest',  // ✅ FIXED!
+          model: 'gemini-2.5-pro-latest',  // ✅ BEST MODEL - Most Advanced
           generationConfig: {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,  // Increased for detailed insights
           }
         });
         
@@ -158,17 +186,31 @@ exports.getHealthMetrics = async (req, res) => {
           activeGoals
         );
         
+        console.log('📤 Sending prompt to Gemini 2.5 Pro...');
         const result = await model.generateContent(prompt);
         const response = await result.response;
         aiInsights = response.text();
         
-        console.log('✅ Elite AI Coaching Generated');
+        console.log('✅ Elite AI Coaching Generated Successfully');
+        console.log(`📊 AI Response Length: ${aiInsights.length} characters`);
       } catch (aiError) {
-        console.error('⚠️ AI Error:', aiError.message);
-        aiInsights = generateEliteFallbackInsights(clockworkScores, trainingAnalysis, recoveryAnalysis);
+        console.error('⚠️ AI Generation Error:', aiError.message);
+        console.error('Full AI Error:', aiError);
+        
+        // Fallback with detailed error info
+        aiInsights = generateEliteFallbackInsights(
+          clockworkScores, 
+          trainingAnalysis, 
+          recoveryAnalysis,
+          `AI temporarily unavailable (${aiError.message})`
+        );
       }
     } else {
-      console.log('⚠️ Using rule-based elite insights');
+      if (!process.env.GOOGLE_AI_API_KEY) {
+        console.log('⚠️ GOOGLE_AI_API_KEY not set - using rule-based insights');
+      } else {
+        console.log('⚠️ Insufficient data for AI analysis');
+      }
       aiInsights = generateEliteFallbackInsights(clockworkScores, trainingAnalysis, recoveryAnalysis);
     }
     
@@ -281,7 +323,8 @@ function calculateRecoveryMetrics(current, history) {
       score: 0,
       trend: 'insufficient_data',
       insights: ['Connect a wearable device to track recovery metrics'],
-      data: {}
+      data: {},
+      hrvTrend: 'stable'
     };
   }
   
@@ -691,8 +734,12 @@ Use EXACT NUMBERS from the data. Be direct and actionable. No fluff.`;
 // ELITE FALLBACK INSIGHTS (RULE-BASED)
 // ============================================
 
-function generateEliteFallbackInsights(scores, training, recovery) {
+function generateEliteFallbackInsights(scores, training, recovery, errorMsg) {
   const sections = [];
+  
+  if (errorMsg) {
+    sections.push(`**System Note:** ${errorMsg}\n`);
+  }
   
   // Recovery section
   sections.push(`**Recovery Analysis (${scores.recovery.score}/100):**`);
@@ -726,18 +773,6 @@ function generateEliteFallbackInsights(scores, training, recovery) {
   }
   
   return sections.join('\n');
-}
-
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-function hasMinimumDataForAI(recovery, training, nutrition) {
-  return (
-    recovery.score > 0 ||
-    training.score > 0 ||
-    nutrition.score > 0
-  );
 }
 
 module.exports = exports;
