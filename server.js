@@ -2,17 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 
 const app = express();
 
 // ============================================
 // MIDDLEWARE
 // ============================================
-
-// Security
-app.use(helmet());
 
 // CORS Configuration
 app.use(cors({
@@ -30,13 +25,11 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+// Request Logging
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
 });
-app.use('/api/', limiter);
 
 // ============================================
 // DATABASE CONNECTION
@@ -91,105 +84,105 @@ app.get('/api', (req, res) => {
 
 // Import Routes (only if files exist)
 try {
-  const authRoutes = require('./src/routes/auth');
+  const authRoutes = require('./Src/routes/auth');
   app.use('/api/auth', authRoutes);
 } catch (e) {
   console.warn('⚠️  Auth routes not found');
 }
 
 try {
-  const intelligenceRoutes = require('./src/routes/intelligence');
+  const intelligenceRoutes = require('./Src/routes/intelligence');
   app.use('/api/intelligence', intelligenceRoutes);
 } catch (e) {
   console.warn('⚠️  Intelligence routes not found');
 }
 
 try {
-  const wearableRoutes = require('./src/routes/wearable');
+  const wearableRoutes = require('./Src/routes/wearable');
   app.use('/api/wearables', wearableRoutes);
 } catch (e) {
   console.warn('⚠️  Wearable routes not found');
 }
 
 try {
-  const workoutRoutes = require('./src/routes/workout');
+  const workoutRoutes = require('./Src/routes/workout');
   app.use('/api/workouts', workoutRoutes);
 } catch (e) {
   console.warn('⚠️  Workout routes not found');
 }
 
 try {
-  const exerciseRoutes = require('./src/routes/exercise');
+  const exerciseRoutes = require('./Src/routes/exercise');
   app.use('/api/exercises', exerciseRoutes);
 } catch (e) {
   console.warn('⚠️  Exercise routes not found');
 }
 
 try {
-  const goalRoutes = require('./src/routes/goal');
+  const goalRoutes = require('./Src/routes/goal');
   app.use('/api/goals', goalRoutes);
 } catch (e) {
   console.warn('⚠️  Goal routes not found');
 }
 
 try {
-  const measurementRoutes = require('./src/routes/measurement');
+  const measurementRoutes = require('./Src/routes/measurement');
   app.use('/api/measurements', measurementRoutes);
 } catch (e) {
   console.warn('⚠️  Measurement routes not found');
 }
 
 try {
-  const nutritionRoutes = require('./src/routes/nutrition');
+  const nutritionRoutes = require('./Src/routes/nutrition');
   app.use('/api/nutrition', nutritionRoutes);
 } catch (e) {
   console.warn('⚠️  Nutrition routes not found');
 }
 
 try {
-  const earthRoutes = require('./src/routes/earth');
+  const earthRoutes = require('./Src/routes/earth');
   app.use('/api/earth', earthRoutes);
 } catch (e) {
   console.warn('⚠️  Earth routes not found');
 }
 
 try {
-  const jupiterRoutes = require('./src/routes/jupiter');
+  const jupiterRoutes = require('./Src/routes/jupiter');
   app.use('/api/jupiter', jupiterRoutes);
 } catch (e) {
   console.warn('⚠️  Jupiter routes not found');
 }
 
 try {
-  const saturnRoutes = require('./src/routes/saturn');
+  const saturnRoutes = require('./Src/routes/saturn');
   app.use('/api/saturn', saturnRoutes);
 } catch (e) {
   console.warn('⚠️  Saturn routes not found');
 }
 
 try {
-  const interventionRoutes = require('./src/routes/intervention');
+  const interventionRoutes = require('./Src/routes/intervention');
   app.use('/api/interventions', interventionRoutes);
 } catch (e) {
   console.warn('⚠️  Intervention routes not found');
 }
 
 try {
-  const predictionRoutes = require('./src/routes/prediction');
+  const predictionRoutes = require('./Src/routes/prediction');
   app.use('/api/predictions', predictionRoutes);
 } catch (e) {
   console.warn('⚠️  Prediction routes not found');
 }
 
 try {
-  const companionRoutes = require('./src/routes/companion');
+  const companionRoutes = require('./Src/routes/companion');
   app.use('/api/companion', companionRoutes);
 } catch (e) {
   console.warn('⚠️  Companion routes not found');
 }
 
 try {
-  const personalRoutes = require('./src/routes/personal');
+  const personalRoutes = require('./Src/routes/personal');
   app.use('/api/personal', personalRoutes);
 } catch (e) {
   console.warn('⚠️  Personal routes not found');
@@ -223,7 +216,7 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ============================================
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
   console.log(`
