@@ -1,399 +1,241 @@
+require('dotenv').config();
 const express = require('express');
-const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
-const morgan = require('morgan');
-const { createServer } = require('http');
-const socketIO = require('socket.io');
-require('dotenv').config();
 
-// ============================================
-// INITIALIZATION
-// ============================================
 const app = express();
-const server = createServer(app);
-const isDevelopment = process.env.NODE_ENV !== 'production';
-const PORT = process.env.PORT || 5000;
 
 // ============================================
-// CORS CONFIGURATION - MAXIMUM COMPATIBILITY
+// MIDDLEWARE
 // ============================================
-const corsOptions = {
-    origin: function (origin, callback) {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin) return callback(null, true);
-        
-        // In production, allow any origin for maximum compatibility
-        if (process.env.NODE_ENV === 'production') {
-            return callback(null, true);
-        }
-        
-        // In development, allow common localhost ports
-        const allowedOrigins = [
-            'http://localhost:3000',
-            'http://localhost:5000',
-            'http://localhost:5173',
-            'http://localhost:8080',
-            'https://clockwork.fit',
-            'https://theclockworkhub.com',
-            'https://coastalfitnesshub.com',
-            /\.vercel\.app$/,
-            /\.netlify\.app$/,
-            /\.railway\.app$/
-        ];
-        
-        const isAllowed = allowedOrigins.some(allowed => {
-            if (typeof allowed === 'string') {
-                return allowed === origin;
-            }
-            return allowed.test(origin);
-        });
-        
-        callback(null, isAllowed || true);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    exposedHeaders: ['X-Total-Count', 'X-Page-Count'],
-    maxAge: 86400
-};
 
-// Apply CORS first
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
-
-// ============================================
-// SOCKET.IO CONFIGURATION
-// ============================================
-const io = socketIO(server, {
-    cors: corsOptions,
-    pingTimeout: 60000,
-    transports: ['websocket', 'polling']
-});
-
-app.set('io', io);
-global.io = io;
-
-// ============================================
-// DATABASE CONNECTION - OPTIMIZED
-// ============================================
-const connectDB = async () => {
-    try {
-        const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/clockwork-genesis';
-        
-        const options = {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
-            maxPoolSize: 50, // Connection pooling
-            minPoolSize: 10,
-            maxIdleTimeMS: 30000,
-        };
-        
-        await mongoose.connect(mongoUri, options);
-        
-        console.log('✅ MongoDB connected successfully');
-        console.log(`📦 Database: ${mongoose.connection.name}`);
-        
-        mongoose.connection.on('error', (err) => {
-            console.error('❌ MongoDB connection error:', err);
-        });
-        
-        mongoose.connection.on('disconnected', () => {
-            console.warn('⚠️ MongoDB disconnected. Attempting to reconnect...');
-        });
-        
-        mongoose.connection.on('reconnected', () => {
-            console.log('✅ MongoDB reconnected');
-        });
-        
-    } catch (err) {
-        console.error('❌ MongoDB initial connection failed:', err);
-        if (!isDevelopment) {
-            setTimeout(connectDB, 5000);
-        } else {
-            process.exit(1);
-        }
-    }
-};
-
-// ============================================
-// SECURITY MIDDLEWARE
-// ============================================
-app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
+// CORS Configuration
+app.use(cors({
+  origin: [
+    'https://pal-frontend-vert.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// ============================================
-// GENERAL MIDDLEWARE - OPTIMIZED ORDER
-// ============================================
-app.use(compression()); // Compress responses
-app.use(morgan(isDevelopment ? 'dev' : 'combined')); // Logging
-app.use(express.json({ limit: '10mb' })); // Parse JSON
-app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Parse URL-encoded
+// Body Parser
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging for debugging
+// Request Logging
 app.use((req, res, next) => {
-    console.log(`🔥 ${req.method} ${req.path} from ${req.ip}`);
-    next();
+  console.log(`${req.method} ${req.path}`);
+  next();
 });
 
 // ============================================
-// API ROUTES - ALL IMPORTS (ALPHABETICAL)
+// DATABASE CONNECTION
 // ============================================
-const authRoutes = require('./Src/routes/auth');
-const classRoutes = require('./Src/routes/class');
-const exerciseRoutes = require('./Src/routes/exercises');
-const goalRoutes = require('./Src/routes/goals');
-const gymRoutes = require('./Src/routes/gyms');
-const intelligenceRoutes = require('./Src/routes/intelligence');
-const measurementRoutes = require('./Src/routes/measurements');
-const messageRoutes = require('./Src/routes/message');
-const nutritionRoutes = require('./Src/routes/nutrition');
-const testRoutes = require('./Src/routes/test');
-const userRoutes = require('./Src/routes/user');
-const wearableRoutes = require('./Src/routes/wearables');
-const workoutRoutes = require('./Src/routes/workout');
 
-// ============================================
-// MOUNT ALL ROUTES (ALPHABETICAL)
-// ============================================
-app.use('/api/auth', authRoutes);
-app.use('/api/classes', classRoutes);
-app.use('/api/exercises', exerciseRoutes);
-app.use('/api/goals', goalRoutes);
-app.use('/api/gyms', gymRoutes);
-app.use('/api/intelligence', intelligenceRoutes);
-app.use('/api/measurements', measurementRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/nutrition', nutritionRoutes);
-app.use('/api/tests', testRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/wearables', wearableRoutes);
-app.use('/api/workouts', workoutRoutes);
-
-// ============================================
-// HEALTH CHECK ENDPOINT
-// ============================================
-app.get('/api/health', async (req, res) => {
-    const healthcheck = {
-        status: 'OK',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        environment: process.env.NODE_ENV || 'development',
-        service: 'ClockWork Island-Genesis API',
-        version: '2.0.0',
-        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-        routes: {
-            auth: '✅',
-            classes: '✅',
-            exercises: '✅',
-            goals: '✅',
-            gyms: '✅',
-            intelligence: '✅ NEW',
-            measurements: '✅',
-            messages: '✅',
-            nutrition: '✅',
-            tests: '✅',
-            users: '✅',
-            wearables: '✅',
-            workouts: '✅'
-        }
-    };
-    
-    res.status(200).json(healthcheck);
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB Connected'))
+.catch(err => {
+  console.error('❌ MongoDB Connection Error:', err);
+  process.exit(1);
 });
 
-// API root endpoint
+// ============================================
+// ROUTES - PHOENIX ONLY
+// ============================================
+
+// Health Check
+app.get('/', (req, res) => {
+  res.json({ 
+    message: '🔥 Phoenix Backend API',
+    status: 'active',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/api', (req, res) => {
-    res.json({
-        name: 'ClockWork Island-Genesis API',
-        version: '2.0.0',
-        status: 'running',
-        architecture: 'Multi-tenant SaaS',
-        environment: process.env.NODE_ENV || 'development',
-        endpoints: {
-            auth: '/api/auth',
-            classes: '/api/classes',
-            exercises: '/api/exercises',
-            goals: '/api/goals',
-            gyms: '/api/gyms',
-            health: '/api/health',
-            intelligence: '/api/intelligence [NEW]',
-            measurements: '/api/measurements',
-            messages: '/api/messages',
-            nutrition: '/api/nutrition',
-            tests: '/api/tests',
-            users: '/api/users',
-            wearables: '/api/wearables',
-            workouts: '/api/workouts'
-        }
-    });
+  res.json({ 
+    message: '🔥 Phoenix API v1.0',
+    status: 'active',
+    endpoints: [
+      '/api/auth',
+      '/api/intelligence',
+      '/api/wearables',
+      '/api/workouts',
+      '/api/exercises',
+      '/api/goals',
+      '/api/measurements',
+      '/api/nutrition',
+      '/api/earth',
+      '/api/jupiter',
+      '/api/saturn',
+      '/api/interventions',
+      '/api/predictions',
+      '/api/companion',
+      '/api/personal'
+    ]
+  });
 });
 
-// ============================================
-// SOCKET.IO HANDLERS
-// ============================================
-require('./Src/utils/socketHandlers')(io);
+// Import Routes (only if files exist)
+try {
+  const authRoutes = require('./Src/routes/auth');
+  app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes loaded');
+} catch (e) {
+  console.error('❌ Auth routes failed:', e.message);
+}
+
+try {
+  const intelligenceRoutes = require('./Src/routes/intelligence');
+  app.use('/api/intelligence', intelligenceRoutes);
+} catch (e) {
+  console.warn('⚠️  Intelligence routes not found');
+}
+
+try {
+  const wearableRoutes = require('./Src/routes/wearable');
+  app.use('/api/wearables', wearableRoutes);
+} catch (e) {
+  console.warn('⚠️  Wearable routes not found');
+}
+
+try {
+  const workoutRoutes = require('./Src/routes/workout');
+  app.use('/api/workouts', workoutRoutes);
+} catch (e) {
+  console.warn('⚠️  Workout routes not found');
+}
+
+try {
+  const exerciseRoutes = require('./Src/routes/exercise');
+  app.use('/api/exercises', exerciseRoutes);
+} catch (e) {
+  console.warn('⚠️  Exercise routes not found');
+}
+
+try {
+  const goalRoutes = require('./Src/routes/goal');
+  app.use('/api/goals', goalRoutes);
+} catch (e) {
+  console.warn('⚠️  Goal routes not found');
+}
+
+try {
+  const measurementRoutes = require('./Src/routes/measurement');
+  app.use('/api/measurements', measurementRoutes);
+} catch (e) {
+  console.warn('⚠️  Measurement routes not found');
+}
+
+try {
+  const nutritionRoutes = require('./Src/routes/nutrition');
+  app.use('/api/nutrition', nutritionRoutes);
+} catch (e) {
+  console.warn('⚠️  Nutrition routes not found');
+}
+
+try {
+  const earthRoutes = require('./Src/routes/earth');
+  app.use('/api/earth', earthRoutes);
+} catch (e) {
+  console.warn('⚠️  Earth routes not found');
+}
+
+try {
+  const jupiterRoutes = require('./Src/routes/jupiter');
+  app.use('/api/jupiter', jupiterRoutes);
+} catch (e) {
+  console.warn('⚠️  Jupiter routes not found');
+}
+
+try {
+  const saturnRoutes = require('./Src/routes/saturn');
+  app.use('/api/saturn', saturnRoutes);
+} catch (e) {
+  console.warn('⚠️  Saturn routes not found');
+}
+
+try {
+  const interventionRoutes = require('./Src/routes/intervention');
+  app.use('/api/interventions', interventionRoutes);
+} catch (e) {
+  console.warn('⚠️  Intervention routes not found');
+}
+
+try {
+  const predictionRoutes = require('./Src/routes/prediction');
+  app.use('/api/predictions', predictionRoutes);
+} catch (e) {
+  console.warn('⚠️  Prediction routes not found');
+}
+
+try {
+  const companionRoutes = require('./Src/routes/companion');
+  app.use('/api/companion', companionRoutes);
+} catch (e) {
+  console.warn('⚠️  Companion routes not found');
+}
+
+try {
+  const personalRoutes = require('./Src/routes/personal');
+  app.use('/api/personal', personalRoutes);
+} catch (e) {
+  console.warn('⚠️  Personal routes not found');
+}
 
 // ============================================
-// ERROR HANDLING - COMPREHENSIVE
+// ERROR HANDLING
 // ============================================
 
-// 404 handler for API routes
-app.use('/api/*', (req, res) => {
-    res.status(404).json({ 
-        success: false,
-        error: 'API endpoint not found',
-        path: req.originalUrl,
-        method: req.method,
-        availableEndpoints: [
-            '/api/auth',
-            '/api/classes',
-            '/api/exercises',
-            '/api/goals',
-            '/api/gyms',
-            '/api/health',
-            '/api/intelligence',
-            '/api/measurements',
-            '/api/messages',
-            '/api/nutrition',
-            '/api/tests',
-            '/api/users',
-            '/api/wearables',
-            '/api/workouts'
-        ]
-    });
+// 404 Handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false,
+    message: 'Route not found',
+    path: req.path 
+  });
 });
 
-// Global error handler
+// Global Error Handler
 app.use((err, req, res, next) => {
-    console.error(`❌ Error: ${err.message}`);
-    console.error(err.stack);
-    
-    let status = err.status || err.statusCode || 500;
-    let message = err.message || 'Internal server error';
-    
-    // Handle specific error types
-    if (err.name === 'ValidationError') {
-        status = 400;
-        message = Object.values(err.errors).map(e => e.message).join(', ');
-    }
-    
-    if (err.name === 'CastError') {
-        status = 400;
-        message = 'Invalid ID format';
-    }
-    
-    if (err.code === 11000) {
-        status = 400;
-        message = 'Duplicate entry - this record already exists';
-    }
-    
-    if (err.message === 'Not allowed by CORS') {
-        status = 403;
-        message = 'Cross-origin request blocked';
-    }
-    
-    if (err.name === 'JsonWebTokenError') {
-        status = 401;
-        message = 'Invalid token';
-    }
-    
-    if (err.name === 'TokenExpiredError') {
-        status = 401;
-        message = 'Token expired';
-    }
-    
-    res.status(status).json({
-        success: false,
-        message: message,
-        error: isDevelopment ? {
-            name: err.name,
-            stack: err.stack,
-            details: err
-        } : undefined
-    });
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-    console.error('❌ UNCAUGHT EXCEPTION! Shutting down...');
-    console.error(err.name, err.message);
-    console.error(err.stack);
-    process.exit(1);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-    console.error('❌ UNHANDLED REJECTION! Shutting down...');
-    console.error(err.name, err.message);
-    server.close(() => {
-        process.exit(1);
-    });
-});
-
-// Handle SIGTERM
-process.on('SIGTERM', () => {
-    console.log('👋 SIGTERM RECEIVED. Shutting down gracefully...');
-    server.close(() => {
-        console.log('💥 Process terminated!');
-    });
+  console.error('❌ Error:', err);
+  
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
 });
 
 // ============================================
 // START SERVER
 // ============================================
-const startServer = async () => {
-    try {
-        await connectDB();
-        
-        server.listen(PORT, () => {
-            console.log(`
-╔════════════════════════════════════════════════════════╗
-║     🏝️ CLOCKWORK ISLAND-GENESIS V2.0 STARTED 🏝️      ║
-╠════════════════════════════════════════════════════════╣
-║  🌐 Server:      http://localhost:${PORT}                 ║
-║  📚 API:         http://localhost:${PORT}/api             ║
-║  💚 Health:      http://localhost:${PORT}/api/health      ║
-║  🔧 Environment: ${(process.env.NODE_ENV || 'development').padEnd(41)}║
-║  📦 Database:    Connected                             ║
-║  🎯 Routes:      14 route groups mounted               ║
-╠════════════════════════════════════════════════════════╣
-║  📍 Available Endpoints:                               ║
-║     /api/auth         - Authentication                 ║
-║     /api/classes      - Calendar & Scheduling          ║
-║     /api/exercises    - Exercise Library               ║
-║     /api/goals        - Goals & Habits                 ║
-║     /api/gyms         - Island Management              ║
-║     /api/intelligence - 🆕 AI Health Insights          ║
-║     /api/measurements - Body Measurements              ║
-║     /api/messages     - Messaging                      ║
-║     /api/nutrition    - Nutrition Plans                ║
-║     /api/tests        - Tests & Assessments            ║
-║     /api/users        - User Management                ║
-║     /api/wearables    - Wearable Integration           ║
-║     /api/workouts     - Workout System                 ║
-╠════════════════════════════════════════════════════════╣
-║  🏝️ Island-Genesis Architecture Active                ║
-║  🧠 AI Intelligence Engine Ready                       ║
-║  🔥 Phoenix of Tesla™ - Production Ready               ║
-╚════════════════════════════════════════════════════════╝
-            `);
-        });
-        
-    } catch (error) {
-        console.error('❌ Failed to start server:', error);
-        process.exit(1);
-    }
-};
 
-// Start the server
-startServer();
+const PORT = process.env.PORT || 8080;
 
-// Export for testing
-module.exports = { app, server, io };
+app.listen(PORT, () => {
+  console.log(`
+  🔥 ========================================
+     PHOENIX BACKEND
+     Status: Active
+     Port: ${PORT}
+     Environment: ${process.env.NODE_ENV || 'development'}
+     Database: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'}
+  ======================================== 🔥
+  `);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Promise Rejection:', err);
+  // Close server & exit process
+  process.exit(1);
+});
+
+module.exports = app;
