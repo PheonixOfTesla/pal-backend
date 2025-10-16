@@ -9,7 +9,6 @@ const app = express();
 // MIDDLEWARE
 // ============================================
 
-// CORS Configuration
 app.use(cors({
   origin: [
     'https://pal-frontend-vert.vercel.app',
@@ -21,11 +20,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Body Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request Logging
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
   next();
@@ -46,10 +43,9 @@ mongoose.connect(process.env.MONGODB_URI, {
 });
 
 // ============================================
-// ROUTES - PHOENIX ONLY
+// HEALTH CHECK
 // ============================================
 
-// Health Check
 app.get('/', (req, res) => {
   res.json({ 
     message: '🔥 Phoenix Backend API',
@@ -62,7 +58,7 @@ app.get('/api', (req, res) => {
   res.json({ 
     message: '🔥 Phoenix API v1.0',
     status: 'active',
-    endpoints: [
+    availableEndpoints: [
       '/api/auth',
       '/api/intelligence',
       '/api/wearables',
@@ -71,36 +67,41 @@ app.get('/api', (req, res) => {
       '/api/goals',
       '/api/measurements',
       '/api/nutrition',
-      '/api/earth',
-      '/api/jupiter',
-      '/api/saturn',
       '/api/interventions',
       '/api/predictions',
       '/api/companion',
-      '/api/personal'
+      '/api/saturn'
     ]
   });
 });
 
-// Import Routes (only if files exist)
+// ============================================
+// LOAD ROUTES
+// ============================================
+
+// 🔥 CRITICAL - Auth routes (MUST work for login)
 try {
   const authRoutes = require('./Src/routes/auth');
   app.use('/api/auth', authRoutes);
   console.log('✅ Auth routes loaded');
 } catch (e) {
-  console.error('❌ Auth routes failed:', e.message);
+  console.error('❌ CRITICAL: Auth routes failed:', e.message);
+  process.exit(1);
 }
 
+// Core Routes
 try {
   const intelligenceRoutes = require('./Src/routes/intelligence');
   app.use('/api/intelligence', intelligenceRoutes);
+  console.log('✅ Intelligence routes loaded');
 } catch (e) {
   console.warn('⚠️  Intelligence routes not found');
 }
 
 try {
-  const wearableRoutes = require('./Src/routes/wearable');
+  const wearableRoutes = require('./Src/routes/wearables');
   app.use('/api/wearables', wearableRoutes);
+  console.log('✅ Wearable routes loaded');
 } catch (e) {
   console.warn('⚠️  Wearable routes not found');
 }
@@ -108,27 +109,31 @@ try {
 try {
   const workoutRoutes = require('./Src/routes/workout');
   app.use('/api/workouts', workoutRoutes);
+  console.log('✅ Workout routes loaded');
 } catch (e) {
   console.warn('⚠️  Workout routes not found');
 }
 
 try {
-  const exerciseRoutes = require('./Src/routes/exercise');
+  const exerciseRoutes = require('./Src/routes/exercises');
   app.use('/api/exercises', exerciseRoutes);
+  console.log('✅ Exercise routes loaded');
 } catch (e) {
   console.warn('⚠️  Exercise routes not found');
 }
 
 try {
-  const goalRoutes = require('./Src/routes/goal');
+  const goalRoutes = require('./Src/routes/goals');
   app.use('/api/goals', goalRoutes);
+  console.log('✅ Goal routes loaded');
 } catch (e) {
   console.warn('⚠️  Goal routes not found');
 }
 
 try {
-  const measurementRoutes = require('./Src/routes/measurement');
+  const measurementRoutes = require('./Src/routes/measurements');
   app.use('/api/measurements', measurementRoutes);
+  console.log('✅ Measurement routes loaded');
 } catch (e) {
   console.warn('⚠️  Measurement routes not found');
 }
@@ -136,34 +141,16 @@ try {
 try {
   const nutritionRoutes = require('./Src/routes/nutrition');
   app.use('/api/nutrition', nutritionRoutes);
+  console.log('✅ Nutrition routes loaded');
 } catch (e) {
   console.warn('⚠️  Nutrition routes not found');
 }
 
-try {
-  const earthRoutes = require('./Src/routes/earth');
-  app.use('/api/earth', earthRoutes);
-} catch (e) {
-  console.warn('⚠️  Earth routes not found');
-}
-
-try {
-  const jupiterRoutes = require('./Src/routes/jupiter');
-  app.use('/api/jupiter', jupiterRoutes);
-} catch (e) {
-  console.warn('⚠️  Jupiter routes not found');
-}
-
-try {
-  const saturnRoutes = require('./Src/routes/saturn');
-  app.use('/api/saturn', saturnRoutes);
-} catch (e) {
-  console.warn('⚠️  Saturn routes not found');
-}
-
+// 🆕 NEW PLANETARY ROUTES
 try {
   const interventionRoutes = require('./Src/routes/intervention');
   app.use('/api/interventions', interventionRoutes);
+  console.log('✅ Intervention routes loaded');
 } catch (e) {
   console.warn('⚠️  Intervention routes not found');
 }
@@ -171,6 +158,7 @@ try {
 try {
   const predictionRoutes = require('./Src/routes/prediction');
   app.use('/api/predictions', predictionRoutes);
+  console.log('✅ Prediction routes loaded');
 } catch (e) {
   console.warn('⚠️  Prediction routes not found');
 }
@@ -178,22 +166,23 @@ try {
 try {
   const companionRoutes = require('./Src/routes/companion');
   app.use('/api/companion', companionRoutes);
+  console.log('✅ Companion routes loaded');
 } catch (e) {
   console.warn('⚠️  Companion routes not found');
 }
 
 try {
-  const personalRoutes = require('./Src/routes/personal');
-  app.use('/api/personal', personalRoutes);
+  const saturnRoutes = require('./Src/routes/saturn');
+  app.use('/api/saturn', saturnRoutes);
+  console.log('✅ Saturn routes loaded');
 } catch (e) {
-  console.warn('⚠️  Personal routes not found');
+  console.warn('⚠️  Saturn routes not found');
 }
 
 // ============================================
 // ERROR HANDLING
 // ============================================
 
-// 404 Handler
 app.use((req, res) => {
   res.status(404).json({ 
     success: false,
@@ -202,10 +191,8 @@ app.use((req, res) => {
   });
 });
 
-// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err);
-  
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal server error',
@@ -222,7 +209,7 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`
   🔥 ========================================
-     PHOENIX BACKEND
+     PHOENIX BACKEND - COMPLETE SYSTEM
      Status: Active
      Port: ${PORT}
      Environment: ${process.env.NODE_ENV || 'development'}
@@ -231,10 +218,8 @@ app.listen(PORT, () => {
   `);
 });
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Promise Rejection:', err);
-  // Close server & exit process
   process.exit(1);
 });
 
