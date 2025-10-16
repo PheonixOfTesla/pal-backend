@@ -86,8 +86,9 @@ app.get('/api', (req, res) => {
 try {
   const authRoutes = require('./Src/routes/auth');
   app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes loaded');
 } catch (e) {
-  console.warn('⚠️  Auth routes not found');
+  console.error('❌ Auth routes failed:', e.message);
 }
 
 try {
