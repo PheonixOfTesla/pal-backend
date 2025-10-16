@@ -1,128 +1,128 @@
+// seed.js - Populate Phoenix database with test data
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+
+// Import models
 const User = require('../models/User');
 
-const seedData = async () => {
+// Seed data
+const users = [
+  {
+    name: 'Phoenix Admin',
+    email: 'admin@clockwork.fit',
+    password: 'admin123',
+    roles: ['admin', 'client']
+  },
+  {
+    name: 'Test Client',
+    email: 'client@test.com',
+    password: 'client123',
+    roles: ['client']
+  },
+  {
+    name: 'John Doe',
+    email: 'john@phoenix.app',
+    password: 'john123',
+    roles: ['client'],
+    phone: '+1-555-0100',
+    height: 180
+  },
+  {
+    name: 'Jane Smith',
+    email: 'jane@phoenix.app',
+    password: 'jane123',
+    roles: ['client'],
+    phone: '+1-555-0101',
+    height: 165
+  }
+];
+
+async function seedDatabase() {
   try {
+    console.log('🔥 Starting Phoenix Database Seeder...\n');
+
     // Connect to MongoDB
-   const dbUrl = process.env.MONGODB_URI;
-    console.log('🔗 Connecting to MongoDB:', dbUrl.replace(/mongodb\+srv:\/\/.*@/, 'mongodb://***@'));
+    console.log('📡 Connecting to MongoDB...');
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    console.log('✅ Connected to MongoDB\n');
+
+    // Ask if user wants to clear existing data
+    console.log('⚠️  WARNING: This will clear existing users!');
+    console.log('📝 To clear data: Set CLEAR_DATA=true in environment');
     
-    await mongoose.connect(dbUrl);
-    console.log('✅ Connected to MongoDB');
-    
-    // Clear existing users
-    const deletedCount = await User.deleteMany();
-    console.log(`🗑️  Deleted ${deletedCount.deletedCount} existing users`);
-    
-    // Create users with different passwords
-    const users = [
-      {
-        name: 'System Administrator',
-        email: 'admin@coastalfitness.com',
-        password: await bcrypt.hash('admin123', 10),
-        roles: ['admin', 'owner'],
-        isActive: true
-      },
-      {
-        name: 'Admin User',
-        email: 'admin@coastal.com',
-        password: await bcrypt.hash('admin123', 10),
-        roles: ['admin'],
-        isActive: true
-      },
-      {
-        name: 'Owner Account',
-        email: 'owner@coastal.com',
-        password: await bcrypt.hash('owner123', 10),
-        roles: ['owner', 'admin'],
-        isActive: true
-      },
-      {
-        name: 'Dr. Sarah Mitchell',
-        email: 'sarah.specialist@coastal.com',
-        password: await bcrypt.hash('specialist123', 10),
-        roles: ['specialist'],
-        isActive: true
-      },
-      {
-        name: 'John Anderson',
-        email: 'john.client@example.com',
-        password: await bcrypt.hash('password123', 10),
-        roles: ['client'],
-        isActive: true
-      },
-      {
-        name: 'Jane Smith',
-        email: 'jane.client@example.com',
-        password: await bcrypt.hash('password123', 10),
-        roles: ['client'],
-        isActive: true
-      },
-      {
-        name: 'Mike Johnson',
-        email: 'mike.client@example.com',
-        password: await bcrypt.hash('password123', 10),
-        roles: ['client'],
-        isActive: true
-      },
-      {
-        name: 'Emily Davis',
-        email: 'emily.specialist@coastal.com',
-        password: await bcrypt.hash('specialist123', 10),
-        roles: ['specialist'],
-        isActive: true
-      },
-      {
-        name: 'Test Engineer',
-        email: 'engineer@coastal.com',
-        password: await bcrypt.hash('engineer123', 10),
-        roles: ['engineer', 'admin'],
-        isActive: true
-      }
-    ];
-    
-    // Insert users
-    const createdUsers = await User.insertMany(users);
-    console.log(`✅ Created ${createdUsers.length} users`);
-    
-    // Display created users
-    console.log('\n📋 USERS CREATED:');
-    console.log('=====================================');
-    for (const user of users) {
-      const roles = user.roles.join(', ');
-      const password = user.email.includes('admin@coastalfitness') ? 'admin123' :
-                       user.email.includes('admin') ? 'admin123' :
-                       user.email.includes('owner') ? 'owner123' :
-                       user.email.includes('specialist') ? 'specialist123' :
-                       user.email.includes('engineer') ? 'engineer123' :
-                       'password123';
-      console.log(`📧 ${user.email.padEnd(35)} | 🔐 ${password.padEnd(15)} | 👤 ${roles}`);
-    }
-    console.log('=====================================\n');
-    
-    // Test login with admin user
-    console.log('🧪 Testing admin@coastalfitness.com login...');
-    const testUser = await User.findOne({ email: 'admin@coastalfitness.com' }).select('+password');
-    if (testUser) {
-      const isValid = await bcrypt.compare('admin123', testUser.password);
-      console.log(`✅ Password validation: ${isValid ? 'PASSED' : 'FAILED'}`);
+    if (process.env.CLEAR_DATA === 'true') {
+      console.log('\n🗑️  Clearing existing data...');
+      await User.deleteMany({});
+      console.log('✅ Cleared users collection\n');
     } else {
-      console.log('❌ Admin user not found!');
+      console.log('ℹ️  Keeping existing data (set CLEAR_DATA=true to clear)\n');
     }
+
+    // Create users
+    console.log('👥 Creating users...');
+    const createdUsers = [];
+
+    for (const userData of users) {
+      try {
+        // Check if user already exists
+        const existingUser = await User.findOne({ email: userData.email });
+        
+        if (existingUser) {
+          console.log(`⚠️  User already exists: ${userData.email}`);
+          createdUsers.push(existingUser);
+          continue;
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        
+        // Create user
+        const user = new User({
+          ...userData,
+          password: hashedPassword,
+          wearableConnections: [],
+          isActive: true
+        });
+
+        await user.save();
+        createdUsers.push(user);
+        
+        console.log(`✅ Created user: ${userData.email}`);
+      } catch (error) {
+        console.error(`❌ Failed to create user ${userData.email}:`, error.message);
+      }
+    }
+
+    // Summary
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔥 PHOENIX DATABASE SEEDED SUCCESSFULLY! 🔥');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     
-    console.log('\n🎉 Seed completed successfully!');
-    console.log('You can now login with:');
-    console.log('  Email: admin@coastalfitness.com');
-    console.log('  Password: admin123');
+    console.log('📊 Summary:');
+    console.log(`   Users created: ${createdUsers.length}\n`);
     
+    console.log('🔐 Login Credentials:\n');
+    users.forEach(user => {
+      console.log(`   📧 ${user.email}`);
+      console.log(`   🔑 ${user.password}`);
+      console.log(`   👤 ${user.roles.join(', ')}\n`);
+    });
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ Ready to test Phoenix!');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
     process.exit(0);
+
   } catch (error) {
-    console.error('❌ Seed error:', error);
+    console.error('\n❌ Seeding failed:', error);
     process.exit(1);
   }
-};
+}
 
-// Run seeding
-seedData();
+// Run seeder
+seedDatabase();
