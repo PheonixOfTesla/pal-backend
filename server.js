@@ -1,30 +1,66 @@
+// server.js (BACKEND ROOT)
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
+const server = http.createServer(app);
 
 // ============================================
-// MIDDLEWARE
+// SECURITY & PERFORMANCE MIDDLEWARE
 // ============================================
+
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+app.use(compression());
+
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// ============================================
+// CORS CONFIGURATION
+// ============================================
+
+const allowedOrigins = [
+  'https://pal-frontend-vert.vercel.app',
+  'https://clockwork.fit',
+  'https://www.clockwork.fit',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002'
+];
 
 app.use(cors({
-  origin: [
-    'https://pal-frontend-vert.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ],
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// ============================================
+// BODY PARSING
+// ============================================
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Request logging
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
@@ -32,172 +68,243 @@ app.use((req, res, next) => {
 // DATABASE CONNECTION
 // ============================================
 
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('✅ MongoDB Connected'))
-.catch(err => {
-  console.error('❌ MongoDB Connection Error:', err);
-  process.exit(1);
+const connectDB = async () => {
+  try {
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    };
+
+    await mongoose.connect(process.env.MONGODB_URI, options);
+    
+    console.log('✅ MongoDB Connected Successfully');
+    console.log(`   Database: ${mongoose.connection.name}`);
+    console.log(`   Host: ${mongoose.connection.host}`);
+  } catch (error) {
+    console.error('❌ MongoDB Connection Error:', error.message);
+    process.exit(1);
+  }
+};
+
+// MongoDB event listeners
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️  MongoDB disconnected');
+});
+
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
 });
 
 // ============================================
-// HEALTH CHECK
+// WEBSOCKET SERVER FOR VOICE
+// ============================================
+
+const wss = new WebSocket.Server({ server, path: '/api/voice/realtime' });
+const realtimeVoiceController = require('./Src/controllers/realtimeVoiceController');
+
+wss.on('connection', (ws, req) => {
+  console.log('🎤 New WebSocket connection');
+  
+  // Extract user from query or token
+  const urlParams = new URLSearchParams(req.url.split('?')[1]);
+  const token = urlParams.get('token');
+  
+  // Attach user info to request (simplified - enhance with JWT verification)
+  req.user = { id: urlParams.get('userId') };
+  
+  realtimeVoiceController.handleConnection(ws, req);
+  
+  ws.on('close', () => {
+    console.log('🔇 WebSocket connection closed');
+  });
+  
+  ws.on('error', (error) => {
+    console.error('❌ WebSocket error:', error);
+  });
+});
+
+console.log('✅ WebSocket server initialized on /api/voice/realtime');
+
+// ============================================
+// HEALTH CHECK & ROOT ROUTES
 // ============================================
 
 app.get('/', (req, res) => {
   res.json({ 
     message: '🔥 Phoenix Backend API',
     status: 'active',
-    timestamp: new Date().toISOString()
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
+});
+
+app.get('/health', (req, res) => {
+  const healthcheck = {
+    uptime: process.uptime(),
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+    }
+  };
+  
+  res.json(healthcheck);
 });
 
 app.get('/api', (req, res) => {
   res.json({ 
-    message: '🔥 Phoenix API v1.0',
+    message: '🔥 Phoenix API v2.0',
     status: 'active',
-    availableEndpoints: [
-      '/api/auth',
-      '/api/intelligence',
-      '/api/wearables',
-      '/api/workouts',
-      '/api/exercises',
-      '/api/goals',
-      '/api/measurements',
-      '/api/nutrition',
-      '/api/interventions',
-      '/api/predictions',
-      '/api/companion',
-      '/api/saturn'
-    ]
+    systems: {
+      mercury: 'Health & Vitals',
+      venus: 'Training & Fitness',
+      earth: 'Schedule & Time',
+      mars: 'Goals & Habits',
+      jupiter: 'Wealth & Finance',
+      saturn: 'Legacy & Social'
+    },
+    endpoints: {
+      auth: '/api/auth',
+      intelligence: '/api/intelligence',
+      wearables: '/api/wearables',
+      workouts: '/api/workouts',
+      exercises: '/api/exercises',
+      goals: '/api/goals',
+      measurements: '/api/measurements',
+      nutrition: '/api/nutrition',
+      interventions: '/api/interventions',
+      predictions: '/api/predictions',
+      companion: '/api/companion',
+      voice: '/api/voice',
+      earth: '/api/earth',
+      jupiter: '/api/jupiter',
+      saturn: '/api/saturn',
+      users: '/api/users',
+      subscription: '/api/subscription'
+    }
   });
 });
 
 // ============================================
-// LOAD ROUTES
+// LOAD ALL ROUTES
 // ============================================
 
-// 🔥 CRITICAL - Auth routes (MUST work for login)
-try {
-  const authRoutes = require('./Src/routes/auth');
-  app.use('/api/auth', authRoutes);
-  console.log('✅ Auth routes loaded');
-} catch (e) {
-  console.error('❌ CRITICAL: Auth routes failed:', e.message);
-  process.exit(1);
-}
+const routes = [
+  { path: '/api/auth', file: './Src/routes/auth', name: 'Auth', critical: true },
+  { path: '/api/intelligence', file: './Src/routes/intelligence', name: 'Intelligence' },
+  { path: '/api/wearables', file: './Src/routes/wearables', name: 'Wearables' },
+  { path: '/api/workouts', file: './Src/routes/workout', name: 'Workouts' },
+  { path: '/api/exercises', file: './Src/routes/exercises', name: 'Exercises' },
+  { path: '/api/goals', file: './Src/routes/goals', name: 'Goals' },
+  { path: '/api/measurements', file: './Src/routes/measurements', name: 'Measurements' },
+  { path: '/api/nutrition', file: './Src/routes/nutrition', name: 'Nutrition' },
+  { path: '/api/interventions', file: './Src/routes/intervention', name: 'Interventions' },
+  { path: '/api/predictions', file: './Src/routes/prediction', name: 'Predictions' },
+  { path: '/api/companion', file: './Src/routes/companion', name: 'Companion' },
+  { path: '/api/voice', file: './Src/routes/voice', name: 'Voice' },
+  { path: '/api/earth', file: './Src/routes/earth', name: 'Earth (Calendar)' },
+  { path: '/api/jupiter', file: './Src/routes/jupiter', name: 'Jupiter (Finance)' },
+  { path: '/api/saturn', file: './Src/routes/saturn', name: 'Saturn (Legacy)' },
+  { path: '/api/users', file: './Src/routes/user', name: 'Users' },
+  { path: '/api/subscription', file: './Src/routes/subscription', name: 'Subscription' }
+];
 
-// Core Routes
-try {
-  const intelligenceRoutes = require('./Src/routes/intelligence');
-  app.use('/api/intelligence', intelligenceRoutes);
-  console.log('✅ Intelligence routes loaded');
-} catch (e) {
-  console.warn('⚠️  Intelligence routes not found');
-}
-
-try {
-  const wearableRoutes = require('./Src/routes/wearables');
-  app.use('/api/wearables', wearableRoutes);
-  console.log('✅ Wearable routes loaded');
-} catch (e) {
-  console.warn('⚠️  Wearable routes not found');
-}
-
-try {
-  const workoutRoutes = require('./Src/routes/workout');
-  app.use('/api/workouts', workoutRoutes);
-  console.log('✅ Workout routes loaded');
-} catch (e) {
-  console.warn('⚠️  Workout routes not found');
-}
-
-try {
-  const exerciseRoutes = require('./Src/routes/exercises');
-  app.use('/api/exercises', exerciseRoutes);
-  console.log('✅ Exercise routes loaded');
-} catch (e) {
-  console.warn('⚠️  Exercise routes not found');
-}
-
-try {
-  const goalRoutes = require('./Src/routes/goals');
-  app.use('/api/goals', goalRoutes);
-  console.log('✅ Goal routes loaded');
-} catch (e) {
-  console.warn('⚠️  Goal routes not found');
-}
-
-try {
-  const measurementRoutes = require('./Src/routes/measurements');
-  app.use('/api/measurements', measurementRoutes);
-  console.log('✅ Measurement routes loaded');
-} catch (e) {
-  console.warn('⚠️  Measurement routes not found');
-}
-
-try {
-  const nutritionRoutes = require('./Src/routes/nutrition');
-  app.use('/api/nutrition', nutritionRoutes);
-  console.log('✅ Nutrition routes loaded');
-} catch (e) {
-  console.warn('⚠️  Nutrition routes not found');
-}
-
-// 🆕 NEW PLANETARY ROUTES
-try {
-  const interventionRoutes = require('./Src/routes/intervention');
-  app.use('/api/interventions', interventionRoutes);
-  console.log('✅ Intervention routes loaded');
-} catch (e) {
-  console.warn('⚠️  Intervention routes not found');
-}
-
-try {
-  const predictionRoutes = require('./Src/routes/prediction');
-  app.use('/api/predictions', predictionRoutes);
-  console.log('✅ Prediction routes loaded');
-} catch (e) {
-  console.warn('⚠️  Prediction routes not found');
-}
-
-try {
-  const companionRoutes = require('./Src/routes/companion');
-  app.use('/api/companion', companionRoutes);
-  console.log('✅ Companion routes loaded');
-} catch (e) {
-  console.warn('⚠️  Companion routes not found');
-}
-
-try {
-  const saturnRoutes = require('./Src/routes/saturn');
-  app.use('/api/saturn', saturnRoutes);
-  console.log('✅ Saturn routes loaded');
-} catch (e) {
-  console.warn('⚠️  Saturn routes not found');
-}
+routes.forEach(({ path, file, name, critical }) => {
+  try {
+    const route = require(file);
+    app.use(path, route);
+    console.log(`✅ ${name} routes loaded`);
+  } catch (error) {
+    if (critical) {
+      console.error(`❌ CRITICAL: ${name} routes failed:`, error.message);
+      process.exit(1);
+    } else {
+      console.warn(`⚠️  ${name} routes not loaded`);
+    }
+  }
+});
 
 // ============================================
 // ERROR HANDLING
 // ============================================
 
+// 404 Handler
 app.use((req, res) => {
   res.status(404).json({ 
     success: false,
     message: 'Route not found',
-    path: req.path 
+    path: req.path,
+    method: req.method,
+    availableEndpoints: '/api for full list'
   });
 });
 
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err);
-  res.status(err.status || 500).json({
+  
+  const statusCode = err.status || err.statusCode || 500;
+  const message = err.message || 'Internal server error';
+  
+  res.status(statusCode).json({
     success: false,
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    message,
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      error: err 
+    })
   });
+});
+
+// ============================================
+// GRACEFUL SHUTDOWN
+// ============================================
+
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} received. Starting graceful shutdown...`);
+  
+  server.close(async () => {
+    console.log('HTTP server closed');
+    
+    try {
+      await mongoose.connection.close();
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    } catch (error) {
+      console.error('Error during shutdown:', error);
+      process.exit(1);
+    }
+  });
+  
+  // Force shutdown after 10 seconds
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('❌ Unhandled Promise Rejection:', error);
+  process.exit(1);
 });
 
 // ============================================
@@ -206,21 +313,40 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
-  console.log(`
-  🔥 ========================================
-     PHOENIX BACKEND - COMPLETE SYSTEM
-     Status: Active
-     Port: ${PORT}
-     Environment: ${process.env.NODE_ENV || 'development'}
-     Database: ${mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'}
-  ======================================== 🔥
-  `);
-});
+const startServer = async () => {
+  try {
+    // Connect to database first
+    await connectDB();
+    
+    // Then start HTTP server
+    server.listen(PORT, () => {
+      console.log(`
+╔════════════════════════════════════════════════════════════╗
+║                                                            ║
+║            🔥 PHOENIX BACKEND - COMPLETE SYSTEM            ║
+║                                                            ║
+║  Status:       Active & Running                            ║
+║  Port:         ${PORT}                                          ║
+║  Environment:  ${process.env.NODE_ENV || 'development'}                                ║
+║  Database:     Connected                                   ║
+║  WebSocket:    Active (Voice AI)                           ║
+║                                                            ║
+║  API Base:     http://localhost:${PORT}/api                  ║
+║  Health:       http://localhost:${PORT}/health               ║
+║                                                            ║
+║  Systems:      Mercury, Venus, Earth, Mars,                ║
+║                Jupiter, Saturn                             ║
+║                                                            ║
+╚════════════════════════════════════════════════════════════╝
+      `);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+};
 
-process.on('unhandledRejection', (err) => {
-  console.error('❌ Unhandled Promise Rejection:', err);
-  process.exit(1);
-});
+// Start the server
+startServer();
 
-module.exports = app;
+module.exports = { app, server };
