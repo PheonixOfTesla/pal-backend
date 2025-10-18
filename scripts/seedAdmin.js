@@ -1,7 +1,6 @@
-// scripts/seedAdmin.js
+// scripts/seedAdmin.js - FIXED VERSION
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const User = require('../Src/models/User'); // Adjust path based on your structure
+const User = require('../Src/models/User');
 require('dotenv').config();
 
 const seedAdmin = async () => {
@@ -16,22 +15,21 @@ const seedAdmin = async () => {
     await User.deleteMany({ email: 'admin@clockwork.fit' });
     console.log('🗑️  Cleared existing admin user');
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-
-    // Create admin user
+    // ✅ FIXED: Don't hash password manually - let the model's pre-save hook do it
     const adminUser = await User.create({
       name: 'Phoenix Admin',
       email: 'admin@clockwork.fit',
-      password: hashedPassword,
+      password: 'admin123',  // Plain password - model will hash it
       roles: ['admin', 'client'],
       isActive: true,
     });
 
     console.log('✅ Admin user created successfully!');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📧 Email: admin@clockwork.fit');
     console.log('🔑 Password: admin123');
     console.log('👤 ID:', adminUser._id);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━');
 
     await mongoose.connection.close();
     console.log('🔌 Database connection closed');
