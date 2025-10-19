@@ -32,8 +32,7 @@ router.delete('/disconnect/:provider', protect, wearableController.disconnect);
 // ============================================
 
 // Step 1: Initiate OAuth connection (returns authUrl for frontend to redirect)
-router.post('/connect/:provider', protect, wearableController.initiateOAuth2);
-
+router.post('/connect/:provider', wearableController.initiateOAuth2);
 // Step 2: Exchange authorization code for access token (NEW - Frontend sends code here)
 router.post('/:provider/exchange', protect, wearableController.exchangeCodeForToken);
 
