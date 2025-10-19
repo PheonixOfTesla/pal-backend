@@ -795,14 +795,7 @@ const refreshAccessToken = async (userId, provider) => {
 const initiateOAuth2 = async (req, res) => {
   try {
     const { provider } = req.params;
-   const userId = req.user?.id || 'anonymous'; // Handle no auth
-    
-    if (!userId) {
-      return res.status(401).json({ 
-        success: false,
-        error: 'Authentication required' 
-      });
-    }
+   const userId = req.user?.id || 'anonymous';
     
     const config = PROVIDERS[provider];
     if (!config || !config.usesOAuth2) {
