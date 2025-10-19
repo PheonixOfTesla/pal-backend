@@ -26,11 +26,12 @@ app.use(compression());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // ============================================
-// CORS CONFIGURATION
+// CORS CONFIGURATION - FIXED
 // ============================================
 
 const allowedOrigins = [
   'https://pal-frontend-vert.vercel.app',
+  'https://phoenix-fe-kappa.vercel.app',
   'https://clockwork.fit',
   'https://www.clockwork.fit',
   'http://localhost:3000',
