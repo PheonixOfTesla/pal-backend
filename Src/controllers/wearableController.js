@@ -1,4 +1,4 @@
-// Src/controllers/wearableController.js - ENHANCED WORKING VERSION
+// Src/controllers/wearableController.js - FIXED FOR FRONTEND OAUTH CALLBACK
 const crypto = require('crypto');
 const axios = require('axios');
 const redis = require('redis');
@@ -85,7 +85,7 @@ const PROVIDERS = {
     name: 'Fitbit',
     clientId: process.env.FITBIT_CLIENT_ID || '23TKZ3',
     clientSecret: process.env.FITBIT_CLIENT_SECRET || 'e7d40e8f805e9d0631af7178c0ec1b08',
-    redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/fitbit',
+    redirectUri: process.env.FITBIT_REDIRECT_URI || 'https://phoenix-fe-kappa.vercel.app/fitbit',
     authUrl: 'https://www.fitbit.com/oauth2/authorize',
     tokenUrl: 'https://api.fitbit.com/oauth2/token',
     apiBase: 'https://api.fitbit.com/1',
@@ -98,7 +98,7 @@ const PROVIDERS = {
     name: 'Polar',
     clientId: process.env.POLAR_CLIENT_ID || 'ca1d6347-f83c-423d-94ef-c4b4ee06cab6',
     clientSecret: process.env.POLAR_CLIENT_SECRET || '34c2a57a-bbc7-4035-84aa-153db113c809',
-    redirectUri: process.env.POLAR_REDIRECT_URI || 'https://clockwork.fit/api/wearables/callback/polar',
+    redirectUri: process.env.POLAR_REDIRECT_URI || 'https://phoenix-fe-kappa.vercel.app/polar',
     authUrl: 'https://flow.polar.com/oauth2/authorization',
     tokenUrl: 'https://polarremote.com/v2/oauth2/token',
     apiBase: 'https://www.polaraccesslink.com/v3',
@@ -111,7 +111,7 @@ const PROVIDERS = {
     name: 'Garmin',
     clientId: process.env.GARMIN_CONSUMER_KEY || null,
     clientSecret: process.env.GARMIN_CONSUMER_SECRET || null,
-    redirectUri: 'https://clockwork.fit/api/wearables/callback/garmin',
+    redirectUri: 'https://phoenix-fe-kappa.vercel.app/garmin',
     requestTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/request_token',
     authUrl: 'https://connect.garmin.com/oauthConfirm',
     accessTokenUrl: 'https://connectapi.garmin.com/oauth-service/oauth/access_token',
@@ -123,7 +123,7 @@ const PROVIDERS = {
     name: 'Oura',
     clientId: process.env.OURA_CLIENT_ID || null,
     clientSecret: process.env.OURA_CLIENT_SECRET || null,
-    redirectUri: 'https://clockwork.fit/api/wearables/callback/oura',
+    redirectUri: 'https://phoenix-fe-kappa.vercel.app/oura',
     authUrl: 'https://cloud.ouraring.com/oauth/authorize',
     tokenUrl: 'https://api.ouraring.com/oauth/token',
     apiBase: 'https://api.ouraring.com/v2',
@@ -136,7 +136,7 @@ const PROVIDERS = {
     name: 'WHOOP',
     clientId: process.env.WHOOP_CLIENT_ID || null,
     clientSecret: process.env.WHOOP_CLIENT_SECRET || null,
-    redirectUri: 'https://clockwork.fit/api/wearables/callback/whoop',
+    redirectUri: 'https://phoenix-fe-kappa.vercel.app/whoop',
     authUrl: 'https://api.prod.whoop.com/oauth/oauth2/auth',
     tokenUrl: 'https://api.prod.whoop.com/oauth/oauth2/token',
     apiBase: 'https://api.prod.whoop.com/developer/v1',
@@ -195,65 +195,6 @@ setInterval(() => {
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
-
-const generateState = () => crypto.randomBytes(32).toString('hex');
-
-const storeState = async (state, userId, provider, additionalData = {}) => {
-  const stateData = { 
-    userId, 
-    provider, 
-    timestamp: Date.now(),
-    ...additionalData 
-  };
-
-  // Try Redis first
-  if (redisClient && redisReady) {
-    try {
-      await redisClient.setEx(
-        `oauth:state:${state}`,
-        600, // 10 minutes
-        JSON.stringify(stateData)
-      );
-      console.log('✅ State stored in Redis');
-      return true;
-    } catch (error) {
-      console.error('❌ Redis store failed:', error.message);
-    }
-  }
-
-  // Fallback to in-memory
-  inMemoryStates.set(state, stateData);
-  setTimeout(() => inMemoryStates.delete(state), 10 * 60 * 1000);
-  console.log('⚠️  State stored in memory (fallback)');
-  return true;
-};
-
-const verifyState = async (state) => {
-  // Try Redis first
-  if (redisClient && redisReady) {
-    try {
-      const data = await redisClient.get(`oauth:state:${state}`);
-      if (data) {
-        await redisClient.del(`oauth:state:${state}`);
-        console.log('✅ State verified from Redis');
-        return JSON.parse(data);
-      }
-    } catch (error) {
-      console.error('❌ Redis verify failed:', error.message);
-    }
-  }
-
-  // Fallback to in-memory
-  const data = inMemoryStates.get(state);
-  if (data) {
-    inMemoryStates.delete(state);
-    console.log('⚠️  State verified from memory');
-    return data;
-  }
-
-  console.error('❌ State not found or expired');
-  return null;
-};
 
 const buildBasicAuth = (clientId, clientSecret) => {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
@@ -446,9 +387,6 @@ const storeWearableData = async (userId, provider, data, date) => {
   }
 };
 
-/**
- * Get most recent complete wearable data with smart fallback
- */
 const getLatestCompleteData = async (userId, provider) => {
   const today = new Date().toISOString().split('T')[0];
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
@@ -466,19 +404,16 @@ const getLatestCompleteData = async (userId, provider) => {
     })
   ]);
   
-  // Prefer today's data if it has meaningful activity or sleep
   if (todayData && (todayData.steps > 100 || todayData.sleepDuration > 0)) {
     console.log('✅ Using today\'s data');
     return todayData;
   }
   
-  // Fall back to yesterday if today is incomplete
   if (yesterdayData) {
     console.log('⚠️ Using yesterday\'s data (today incomplete)');
     return yesterdayData;
   }
   
-  // Return today's data even if empty (better than nothing)
   return todayData;
 };
 
@@ -490,28 +425,24 @@ const calculateRecoveryScore = (hrv, restingHR, sleepQuality, sleepEfficiency, b
   let score = 0;
   let totalWeight = 0;
   
-  // HRV (35% weight)
   if (hrv && hrv > 0) {
     const hrvScore = Math.min((hrv / 80) * 100, 100);
     score += hrvScore * 0.35;
     totalWeight += 0.35;
   }
   
-  // Resting HR (25% weight)
   if (restingHR && restingHR > 0) {
     const rhrScore = Math.max(0, 100 - ((restingHR - 40) / 40 * 100));
     score += Math.min(rhrScore, 100) * 0.25;
     totalWeight += 0.25;
   }
   
-  // Sleep (25% weight)
   if (sleepQuality && sleepEfficiency) {
     const sleepScore = (sleepQuality * 10 * 0.6) + (sleepEfficiency * 0.4);
     score += sleepScore * 0.25;
     totalWeight += 0.25;
   }
   
-  // Breathing rate (15% weight)
   if (breathingRate && breathingRate > 0) {
     const breathingScore = breathingRate >= 12 && breathingRate <= 20 ? 100 : 
                           Math.max(0, 100 - Math.abs(16 - breathingRate) * 10);
@@ -563,9 +494,6 @@ const calculateTrainingLoad = (activeMinutes, caloriesBurned, steps, activeZoneM
 // FITBIT DATA FETCHING
 // ============================================
 
-/**
- * Safe API call wrapper - never throws on API errors
- */
 const safeFitbitCall = async (accessToken, endpoint, description) => {
   const config = PROVIDERS.fitbit;
   const api = createAxiosInstance(config.apiBase);
@@ -588,9 +516,6 @@ const safeFitbitCall = async (accessToken, endpoint, description) => {
   }
 };
 
-/**
- * Comprehensive Fitbit data fetch with guaranteed delivery
- */
 const fetchFitbitDataEnhanced = async (accessToken, date) => {
   console.log(`🔄 Fetching comprehensive Fitbit data for ${date}`);
   
@@ -792,7 +717,6 @@ const fetchPolarData = async (accessToken, userId) => {
   };
 
   try {
-    // Register user (if not already)
     await api.post('/users', { 'member-id': userId }, { headers }).catch(() => {});
 
     const [exercises, activity] = await Promise.all([
@@ -865,13 +789,20 @@ const refreshAccessToken = async (userId, provider) => {
 };
 
 // ============================================
-// OAUTH FLOW
+// OAUTH FLOW - INITIATE (Generate Auth URL)
 // ============================================
 
 const initiateOAuth2 = async (req, res) => {
   try {
     const { provider } = req.params;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Authentication required' 
+      });
+    }
     
     const config = PROVIDERS[provider];
     if (!config || !config.usesOAuth2) {
@@ -888,31 +819,32 @@ const initiateOAuth2 = async (req, res) => {
       });
     }
 
-    const state = generateState();
-    const additionalData = {};
-    
-    let codeChallenge = null;
-    if (config.usesPKCE) {
-      const codeVerifier = generateCodeVerifier();
-      codeChallenge = generateCodeChallenge(codeVerifier);
-      additionalData.codeVerifier = codeVerifier;
-      console.log('🔐 PKCE enabled');
-    }
-    
-    await storeState(state, userId, provider, additionalData);
-
     const authParams = {
       client_id: config.clientId,
       response_type: 'code',
       redirect_uri: config.redirectUri,
       scope: config.scope,
-      state: state,
       prompt: 'login consent'
     };
     
-    if (config.usesPKCE && codeChallenge) {
+    // Add PKCE if required (Fitbit uses it)
+    if (config.usesPKCE) {
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
+      
       authParams.code_challenge = codeChallenge;
       authParams.code_challenge_method = 'S256';
+      
+      // Store code verifier for later use (when frontend sends code back)
+      const verifierKey = `pkce:${userId}:${provider}`;
+      if (redisClient && redisReady) {
+        await redisClient.setEx(verifierKey, 600, codeVerifier);
+      } else {
+        inMemoryStates.set(verifierKey, codeVerifier);
+        setTimeout(() => inMemoryStates.delete(verifierKey), 10 * 60 * 1000);
+      }
+      
+      console.log('🔐 PKCE enabled for', provider);
     }
 
     const authUrl = `${config.authUrl}?${new URLSearchParams(authParams).toString()}`;
@@ -933,28 +865,39 @@ const initiateOAuth2 = async (req, res) => {
   }
 };
 
-const handleOAuth2Callback = async (req, res) => {
+// ============================================
+// NEW: EXCHANGE CODE FOR TOKEN (Frontend Callback)
+// ============================================
+
+const exchangeCodeForToken = async (req, res) => {
   try {
     const { provider } = req.params;
-    const { code, state, error } = req.query;
+    const { code } = req.body;
+    const userId = req.user?.id;
 
-    console.log(`📥 OAuth callback for ${provider}`);
-
-    if (error) {
-      console.error('❌ OAuth error:', error);
-      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=oauth_error`);
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Authentication required' 
+      });
     }
 
-    const stateData = await verifyState(state);
-    if (!stateData) {
-      console.error('❌ Invalid state');
-      return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=invalid_state`);
+    if (!code) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Authorization code required' 
+      });
     }
 
-    console.log('✅ State verified');
+    console.log(`🔄 Exchanging code for ${provider} token`);
 
     const config = PROVIDERS[provider];
-    const { userId, codeVerifier } = stateData;
+    if (!config) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid provider' 
+      });
+    }
 
     const tokenRequestBody = {
       grant_type: 'authorization_code',
@@ -963,14 +906,37 @@ const handleOAuth2Callback = async (req, res) => {
       client_id: config.clientId
     };
     
-    if (config.usesPKCE && codeVerifier) {
+    // Handle PKCE (Fitbit requires it)
+    if (config.usesPKCE) {
+      const verifierKey = `pkce:${userId}:${provider}`;
+      let codeVerifier = null;
+      
+      if (redisClient && redisReady) {
+        codeVerifier = await redisClient.get(verifierKey);
+        if (codeVerifier) {
+          await redisClient.del(verifierKey);
+        }
+      } else {
+        codeVerifier = inMemoryStates.get(verifierKey);
+        if (codeVerifier) {
+          inMemoryStates.delete(verifierKey);
+        }
+      }
+      
+      if (!codeVerifier) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'Code verifier not found or expired. Please try connecting again.' 
+        });
+      }
+      
       tokenRequestBody.code_verifier = codeVerifier;
-      console.log('🔐 Using PKCE');
+      console.log('🔐 Using PKCE code verifier');
     } else {
       tokenRequestBody.client_secret = config.clientSecret;
     }
 
-    console.log('📤 Requesting token');
+    console.log('📤 Requesting access token from', config.name);
 
     const tokenResponse = await axios.post(
       config.tokenUrl,
@@ -979,11 +945,12 @@ const handleOAuth2Callback = async (req, res) => {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Authorization': buildBasicAuth(config.clientId, config.clientSecret)
-        }
+        },
+        timeout: 15000
       }
     );
 
-    console.log('✅ Token received');
+    console.log('✅ Token received from', config.name);
 
     const { access_token, refresh_token, expires_in, user_id, scope } = tokenResponse.data;
 
@@ -995,12 +962,27 @@ const handleOAuth2Callback = async (req, res) => {
       scope: scope
     });
 
-    console.log('✅ Connection complete');
+    console.log('✅ Connection complete for', config.name);
 
-    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_connected=${provider}`);
+    res.json({ 
+      success: true,
+      message: `${config.name} connected successfully`,
+      provider: config.name
+    });
+
   } catch (error) {
-    console.error('❌ OAuth callback error:', error.response?.data || error.message);
-    return res.redirect(`${process.env.FRONTEND_URL || 'https://clockwork.fit'}/?wearable_error=auth_failed`);
+    console.error('❌ Token exchange error:', error.response?.data || error.message);
+    
+    const errorMessage = error.response?.data?.errors?.[0]?.message 
+      || error.response?.data?.error_description 
+      || error.message 
+      || 'Failed to connect device';
+    
+    res.status(500).json({ 
+      success: false,
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.response?.data : undefined
+    });
   }
 };
 
@@ -1358,10 +1340,14 @@ const initiateGarminOAuth = (req, res) => {
 // ============================================
 
 module.exports = {
+  // OAuth initiation (returns authUrl)
   initiateOAuth2,
-  handleOAuth2Callback,
+  
+  // NEW: Code exchange (frontend sends code, gets tokens stored)
+  exchangeCodeForToken,
+  
+  // Other endpoints
   initiateGarminOAuth,
-  oauthCallback: handleOAuth2Callback,
   syncWearableData,
   syncNow: syncWearableData,
   getWearableData,
