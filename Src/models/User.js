@@ -1,4 +1,4 @@
-// Src/models/User.js - FIXED VERSION WITH AUTO-CREATION
+// Src/models/User.js - FIXED VERSION WITH PREFERENCES
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
@@ -86,7 +86,13 @@ const userSchema = new mongoose.Schema({
     type: Number
   },
   
-  // ✅ FIXED: Wearable Connections with DEFAULT VALUE
+  // ✅ NEW: User Preferences (for onboarding and app settings)
+  preferences: {
+    type: Object,
+    default: {}
+  },
+  
+  // Wearable Connections with DEFAULT VALUE
   wearableConnections: {
     type: [{
       provider: {
@@ -104,7 +110,7 @@ const userSchema = new mongoose.Schema({
       lastSync: Date,
       scopes: [String]
     }],
-    default: [] // ✅ THIS FIXES THE 404 ERROR
+    default: []
   },
   
   // Timestamps
@@ -125,7 +131,7 @@ userSchema.index({ gymId: 1, roles: 1 });
 userSchema.index({ specialistIds: 1 });
 userSchema.index({ clientIds: 1 });
 
-// ✅ ENHANCED: Ensure wearableConnections exists on save
+// Ensure wearableConnections exists on save
 userSchema.pre('save', async function(next) {
   // Hash password if modified
   if (this.isModified('password')) {
@@ -137,7 +143,7 @@ userSchema.pre('save', async function(next) {
     }
   }
   
-  // ✅ ENSURE wearableConnections is initialized
+  // Ensure wearableConnections is initialized
   if (!this.wearableConnections) {
     this.wearableConnections = [];
   }
@@ -189,14 +195,14 @@ userSchema.methods.isPlatformAdmin = function() {
   return this.roles.includes('engineer') || this.roles.includes('owner');
 };
 
-// ✅ FIXED: Ensure wearableConnections is always an array in JSON
+// Ensure wearableConnections is always an array in JSON
 userSchema.methods.toJSON = function() {
   const obj = this.toObject();
   delete obj.password;
   delete obj.resetPasswordCode;
   delete obj.resetPasswordExpires;
   
-  // ✅ Ensure wearableConnections exists
+  // Ensure wearableConnections exists
   if (!obj.wearableConnections) {
     obj.wearableConnections = [];
   }
