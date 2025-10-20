@@ -1,11 +1,11 @@
-// Src/controllers/authController.js - FIXED VERSION
+// Src/controllers/authController.js - FIXED (NO DOUBLE HASHING)
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 
 // ============================================
-// REGISTER
+// REGISTER - LET PRE-SAVE HOOK HANDLE HASHING
 // ============================================
 exports.register = async (req, res) => {
     try {
@@ -36,18 +36,23 @@ exports.register = async (req, res) => {
             });
         }
         
+        console.log('📝 Creating user with PLAIN password (pre-save hook will hash)');
         
+        // ✅ PASS PLAIN PASSWORD - Let pre-save hook hash it
         const user = new User({
-    name,
-    email: email.toLowerCase(),
-    password: password,  // Plain password - let the model hash it
-    roles: roles || ['client'],
-    gymId: gymId || null
-});
+            name,
+            email: email.toLowerCase(),
+            password: password,  // ✅ PLAIN PASSWORD - pre-save will hash
+            roles: roles || ['client'],
+            gymId: gymId || null,
+            wearableConnections: []
+        });
 
-await user.save();  // The pre-save hook will hash the password
+        await user.save();  // ✅ Pre-save hook hashes password here
         
-        // ✅ FIXED: Use 'id' instead of 'userId' for consistency with middleware
+        console.log('✅ User created:', user.email);
+        
+        // Generate token
         const token = jwt.sign(
             { id: user._id, roles: user.roles },
             process.env.JWT_SECRET,
@@ -68,7 +73,7 @@ await user.save();  // The pre-save hook will hash the password
         });
         
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('❌ Registration error:', error);
         res.status(500).json({ 
             success: false,
             message: 'Server error during registration', 
@@ -78,13 +83,12 @@ await user.save();  // The pre-save hook will hash the password
 };
 
 // ============================================
-// LOGIN
+// LOGIN - NO CHANGES NEEDED
 // ============================================
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
         
-        // Validate required fields
         if (!email || !password) {
             return res.status(400).json({ 
                 success: false,
@@ -94,7 +98,6 @@ exports.login = async (req, res) => {
         
         console.log(`🔐 Login attempt for: ${email}`);
         
-        // Find user
         const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
             console.log(`❌ User not found: ${email}`);
@@ -104,32 +107,28 @@ exports.login = async (req, res) => {
             });
         }
         
-        console.log(`✅ User found: ${user.email}, checking password...`);
+        console.log(`✅ User found, checking password...`);
         
-        // Check password
+        // Compare plain password with hashed password
         const isValidPassword = await user.comparePassword(password);
-if (!isValidPassword) {
-    console.log(`❌ Invalid password for: ${email}`);
-    return res.status(401).json({ 
-        success: false,
-        message: 'Invalid credentials' 
-    });
-}
+        if (!isValidPassword) {
+            console.log(`❌ Invalid password for: ${email}`);
+            return res.status(401).json({ 
+                success: false,
+                message: 'Invalid credentials' 
+            });
+        }
         
         console.log(`✅ Password valid for: ${email}`);
         
-        // Update last login
         user.lastLogin = new Date();
         await user.save();
         
-        // ✅ FIXED: Use 'id' instead of 'userId' for consistency with middleware
         const token = jwt.sign(
             { id: user._id, roles: user.roles },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
         );
-        
-        console.log(`✅ Token generated for: ${email}`);
         
         res.json({
             success: true,
@@ -145,7 +144,7 @@ if (!isValidPassword) {
         });
         
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Login error:', error);
         res.status(500).json({ 
             success: false,
             message: 'Server error during login',
@@ -155,90 +154,68 @@ if (!isValidPassword) {
 };
 
 // ============================================
-// LOGOUT
+// CHANGE PASSWORD - FIXED (NO DOUBLE HASHING)
 // ============================================
-exports.logout = async (req, res) => {
+exports.changePassword = async (req, res) => {
     try {
-        // In a JWT system, logout is handled client-side by deleting the token
-        // Optional: You can implement token blacklisting here if needed
+        const { currentPassword, newPassword } = req.body;
+        
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Current password and new password are required' 
+            });
+        }
+        
+        if (newPassword.length < 6) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'New password must be at least 6 characters long' 
+            });
+        }
+        
+        const user = await User.findById(req.user.id);
+        
+        if (!user) {
+            return res.status(404).json({ 
+                success: false,
+                message: 'User not found' 
+            });
+        }
+        
+        // Verify current password
+        const isValidPassword = await user.comparePassword(currentPassword);
+        if (!isValidPassword) {
+            return res.status(401).json({ 
+                success: false,
+                message: 'Current password is incorrect' 
+            });
+        }
+        
+        console.log('🔐 Changing password (pre-save hook will hash)');
+        
+        // ✅ Set PLAIN password - pre-save hook will hash it
+        user.password = newPassword;  // ✅ PLAIN PASSWORD
+        await user.save();  // ✅ Pre-save hook hashes it
+        
+        console.log('✅ Password changed for:', user.email);
         
         res.json({ 
             success: true,
-            message: 'Logout successful' 
+            message: 'Password changed successfully' 
         });
+        
     } catch (error) {
-        console.error('Logout error:', error);
+        console.error('❌ Change password error:', error);
         res.status(500).json({ 
             success: false,
-            message: 'Server error during logout' 
+            message: 'Server error during password change' 
         });
     }
 };
 
 // ============================================
-// REQUEST PASSWORD RESET
-// ============================================
-exports.resetPasswordRequest = async (req, res) => {
-    try {
-        const { email } = req.body;
-        
-        if (!email) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'Email is required' 
-            });
-        }
-        
-        const user = await User.findOne({ email: email.toLowerCase() });
-        
-        // Always return same message to prevent email enumeration
-        const successMessage = 'If that email exists, a reset code has been sent';
-        
-        if (!user) {
-            return res.json({ 
-                success: true,
-                message: successMessage 
-            });
-        }
-        
-        // Generate 3-digit code
-        const resetCode = Math.floor(100 + Math.random() * 900).toString();
-        const resetToken = crypto.createHash('sha256').update(resetCode).digest('hex');
-        
-        user.resetPasswordCode = resetToken;
-        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-        await user.save();
-        
-        // TODO: Send email with resetCode
-        // For now, log it (in production, send via email service like SendGrid)
-        console.log(`🔐 Password reset code for ${email}: ${resetCode}`);
-        console.log(`⏰ Expires at: ${new Date(user.resetPasswordExpires)}`);
-        
-        // ✅ SECURITY FIX: Never expose reset code in production
-        const response = {
-            success: true,
-            message: successMessage
-        };
-        
-        // Only include reset code in development mode
-        if (process.env.NODE_ENV === 'development') {
-            response.resetCode = resetCode;
-            response._devNote = 'Reset code only shown in development mode';
-        }
-        
-        res.json(response);
-        
-    } catch (error) {
-        console.error('Password reset request error:', error);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error processing reset request' 
-        });
-    }
-};
-
-// ============================================
-// RESET PASSWORD WITH CODE
+// RESET PASSWORD - FIXED (NO DOUBLE HASHING)
 // ============================================
 exports.resetPassword = async (req, res) => {
     try {
@@ -259,10 +236,8 @@ exports.resetPassword = async (req, res) => {
             });
         }
         
-        // Hash the provided token to compare with stored hash
         const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
         
-        // Find user with valid reset token
         const user = await User.findOne({
             resetPasswordCode: hashedToken,
             resetPasswordExpires: { $gt: Date.now() }
@@ -275,13 +250,15 @@ exports.resetPassword = async (req, res) => {
             });
         }
         
-        // Hash new password
-        user.password = await bcrypt.hash(password, 10);
+        console.log('🔐 Resetting password (pre-save hook will hash)');
+        
+        // ✅ Set PLAIN password - pre-save hook will hash it
+        user.password = password;  // ✅ PLAIN PASSWORD
         user.resetPasswordCode = undefined;
         user.resetPasswordExpires = undefined;
-        await user.save();
+        await user.save();  // ✅ Pre-save hook hashes it
         
-        console.log(`✅ Password reset successful for: ${user.email}`);
+        console.log('✅ Password reset for:', user.email);
         
         res.json({ 
             success: true,
@@ -289,7 +266,7 @@ exports.resetPassword = async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Password reset error:', error);
+        console.error('❌ Password reset error:', error);
         res.status(500).json({ 
             success: false,
             message: 'Server error during password reset' 
@@ -297,12 +274,77 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
-// ============================================
-// GET CURRENT USER (Optional - useful for token refresh)
-// ============================================
+// ... rest of the controller (no changes)
+exports.logout = async (req, res) => {
+    try {
+        res.json({ 
+            success: true,
+            message: 'Logout successful' 
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Server error during logout' 
+        });
+    }
+};
+
+exports.resetPasswordRequest = async (req, res) => {
+    try {
+        const { email } = req.body;
+        
+        if (!email) {
+            return res.status(400).json({ 
+                success: false,
+                message: 'Email is required' 
+            });
+        }
+        
+        const user = await User.findOne({ email: email.toLowerCase() });
+        
+        const successMessage = 'If that email exists, a reset code has been sent';
+        
+        if (!user) {
+            return res.json({ 
+                success: true,
+                message: successMessage 
+            });
+        }
+        
+        const resetCode = Math.floor(100 + Math.random() * 900).toString();
+        const resetToken = crypto.createHash('sha256').update(resetCode).digest('hex');
+        
+        user.resetPasswordCode = resetToken;
+        user.resetPasswordExpires = Date.now() + 3600000;
+        await user.save();
+        
+        console.log(`🔐 Password reset code for ${email}: ${resetCode}`);
+        console.log(`⏰ Expires at: ${new Date(user.resetPasswordExpires)}`);
+        
+        const response = {
+            success: true,
+            message: successMessage
+        };
+        
+        if (process.env.NODE_ENV === 'development') {
+            response.resetCode = resetCode;
+            response._devNote = 'Reset code only shown in development mode';
+        }
+        
+        res.json(response);
+        
+    } catch (error) {
+        console.error('Password reset request error:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Server error processing reset request' 
+        });
+    }
+};
+
 exports.getCurrentUser = async (req, res) => {
     try {
-        // req.user is set by protect middleware
         const user = await User.findById(req.user.id).select('-password');
         
         if (!user) {
@@ -328,66 +370,6 @@ exports.getCurrentUser = async (req, res) => {
         res.status(500).json({ 
             success: false,
             message: 'Failed to get user information' 
-        });
-    }
-};
-
-// ============================================
-// CHANGE PASSWORD (for logged-in users)
-// ============================================
-exports.changePassword = async (req, res) => {
-    try {
-        const { currentPassword, newPassword } = req.body;
-        
-        if (!currentPassword || !newPassword) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'Current password and new password are required' 
-            });
-        }
-        
-        if (newPassword.length < 6) {
-            return res.status(400).json({ 
-                success: false,
-                message: 'New password must be at least 6 characters long' 
-            });
-        }
-        
-        // Get user with password field
-        const user = await User.findById(req.user.id);
-        
-        if (!user) {
-            return res.status(404).json({ 
-                success: false,
-                message: 'User not found' 
-            });
-        }
-        
-        // Verify current password
-        const isValidPassword = await bcrypt.compare(currentPassword, user.password);
-        if (!isValidPassword) {
-            return res.status(401).json({ 
-                success: false,
-                message: 'Current password is incorrect' 
-            });
-        }
-        
-        // Hash and save new password
-        user.password = await bcrypt.hash(newPassword, 10);
-        await user.save();
-        
-        console.log(`✅ Password changed for: ${user.email}`);
-        
-        res.json({ 
-            success: true,
-            message: 'Password changed successfully' 
-        });
-        
-    } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({ 
-            success: false,
-            message: 'Server error during password change' 
         });
     }
 };
