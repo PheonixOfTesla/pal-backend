@@ -1,4 +1,4 @@
-// Src/controllers/authController.js - FIXED (NO DOUBLE HASHING)
+// Src/controllers/authController.js - FIXED WITH UPDATE PREFERENCES
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -42,13 +42,13 @@ exports.register = async (req, res) => {
         const user = new User({
             name,
             email: email.toLowerCase(),
-            password: password,  // ✅ PLAIN PASSWORD - pre-save will hash
+            password: password,
             roles: roles || ['client'],
             gymId: gymId || null,
             wearableConnections: []
         });
 
-        await user.save();  // ✅ Pre-save hook hashes password here
+        await user.save();
         
         console.log('✅ User created:', user.email);
         
@@ -154,6 +154,52 @@ exports.login = async (req, res) => {
 };
 
 // ============================================
+// ✅ NEW: UPDATE USER PREFERENCES
+// ============================================
+exports.updateUserPreferences = async (req, res) => {
+    try {
+        const { preferences } = req.body;
+        
+        if (!preferences || typeof preferences !== 'object') {
+            return res.status(400).json({
+                success: false,
+                message: 'Valid preferences object is required'
+            });
+        }
+        
+        console.log('💾 Updating preferences for user:', req.user.id);
+        
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { preferences },
+            { new: true, runValidators: true }
+        ).select('-password');
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        console.log('✅ Preferences updated successfully');
+        
+        res.json({
+            success: true,
+            message: 'Preferences updated successfully',
+            data: user
+        });
+        
+    } catch (error) {
+        console.error('❌ Update preferences error:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to update preferences'
+        });
+    }
+};
+
+// ============================================
 // CHANGE PASSWORD - FIXED (NO DOUBLE HASHING)
 // ============================================
 exports.changePassword = async (req, res) => {
@@ -195,8 +241,8 @@ exports.changePassword = async (req, res) => {
         console.log('🔐 Changing password (pre-save hook will hash)');
         
         // ✅ Set PLAIN password - pre-save hook will hash it
-        user.password = newPassword;  // ✅ PLAIN PASSWORD
-        await user.save();  // ✅ Pre-save hook hashes it
+        user.password = newPassword;
+        await user.save();
         
         console.log('✅ Password changed for:', user.email);
         
@@ -253,10 +299,10 @@ exports.resetPassword = async (req, res) => {
         console.log('🔐 Resetting password (pre-save hook will hash)');
         
         // ✅ Set PLAIN password - pre-save hook will hash it
-        user.password = password;  // ✅ PLAIN PASSWORD
+        user.password = password;
         user.resetPasswordCode = undefined;
         user.resetPasswordExpires = undefined;
-        await user.save();  // ✅ Pre-save hook hashes it
+        await user.save();
         
         console.log('✅ Password reset for:', user.email);
         
@@ -274,7 +320,6 @@ exports.resetPassword = async (req, res) => {
     }
 };
 
-// ... rest of the controller (no changes)
 exports.logout = async (req, res) => {
     try {
         res.json({ 
@@ -362,7 +407,8 @@ exports.getCurrentUser = async (req, res) => {
                 email: user.email,
                 roles: user.roles,
                 gymId: user.gymId,
-                lastLogin: user.lastLogin
+                lastLogin: user.lastLogin,
+                preferences: user.preferences || {}
             }
         });
     } catch (error) {
