@@ -1,9 +1,151 @@
-// Src/routes/voice.js
+// Src/routes/voice.js - OpenAI TTS Integration
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const realtimeVoiceService = require('../services/realtimeVoiceService');
 const CompanionConversation = require('../models/CompanionConversation');
+
+/**
+ * @route   POST /api/voice/speak
+ * @desc    Convert text to speech using OpenAI TTS HD
+ * @access  Private
+ */
+router.post('/speak', auth, async (req, res) => {
+  try {
+    const { text, voice = 'nova', speed = 1.0 } = req.body;
+
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+
+    if (text.length > 4096) {
+      return res.status(400).json({ error: 'Text too long (max 4096 characters)' });
+    }
+
+    // Validate voice option
+    const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+    if (!validVoices.includes(voice)) {
+      return res.status(400).json({ 
+        error: 'Invalid voice',
+        validVoices 
+      });
+    }
+
+    // Validate speed
+    if (speed < 0.25 || speed > 4.0) {
+      return res.status(400).json({ error: 'Speed must be between 0.25 and 4.0' });
+    }
+
+    console.log(`[TTS] Generating speech for user ${req.user.id}: ${text.substring(0, 50)}...`);
+
+    // Call OpenAI TTS API
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'tts-1-hd', // High quality voice
+        input: text,
+        voice: voice,
+        speed: speed
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[TTS] OpenAI API Error:', error);
+      return res.status(response.status).json({ 
+        error: 'Failed to generate speech',
+        details: error 
+      });
+    }
+
+    const audioBuffer = await response.arrayBuffer();
+    
+    // Log usage for tracking
+    console.log(`[TTS] Generated ${audioBuffer.byteLength} bytes, ~${text.length} chars, voice: ${voice}`);
+
+    // Send audio back as MP3
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.byteLength,
+      'Cache-Control': 'no-cache'
+    });
+    
+    res.send(Buffer.from(audioBuffer));
+
+  } catch (error) {
+    console.error('[TTS] Error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate speech',
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * @route   GET /api/voice/voices
+ * @desc    Get available TTS voices with samples
+ * @access  Public
+ */
+router.get('/voices', (req, res) => {
+  const voices = [
+    {
+      id: 'alloy',
+      name: 'Alloy',
+      description: 'Neutral and balanced',
+      gender: 'neutral',
+      recommended: false
+    },
+    {
+      id: 'echo',
+      name: 'Echo',
+      description: 'Male, calm and soothing',
+      gender: 'male',
+      recommended: false
+    },
+    {
+      id: 'fable',
+      name: 'Fable',
+      description: 'British accent, warm (JARVIS-like)',
+      gender: 'male',
+      recommended: true
+    },
+    {
+      id: 'onyx',
+      name: 'Onyx',
+      description: 'Deep male voice, authoritative',
+      gender: 'male',
+      recommended: false
+    },
+    {
+      id: 'nova',
+      name: 'Nova',
+      description: 'Female, energetic and friendly',
+      gender: 'female',
+      recommended: true
+    },
+    {
+      id: 'shimmer',
+      name: 'Shimmer',
+      description: 'Female, soft and gentle',
+      gender: 'female',
+      recommended: false
+    }
+  ];
+
+  res.json({
+    voices,
+    sampleText: 'Hello, I am Phoenix, your AI companion.',
+    defaultVoice: 'nova',
+    pricing: {
+      model: 'tts-1-hd',
+      costPer1MChars: 30,
+      currency: 'USD'
+    }
+  });
+});
 
 /**
  * @route   GET /api/voice/status
@@ -12,22 +154,23 @@ const CompanionConversation = require('../models/CompanionConversation');
  */
 router.get('/status', (req, res) => {
   try {
-    const isConfigured = realtimeVoiceService.validateApiKey();
-    const voiceOptions = realtimeVoiceService.getVoiceOptions();
-    const costs = realtimeVoiceService.getEstimatedCost();
+    const isConfigured = !!process.env.OPENAI_API_KEY;
 
     res.json({
       available: isConfigured,
-      service: 'OpenAI Realtime API',
-      voiceOptions,
-      estimatedCosts: costs,
+      service: 'OpenAI TTS HD',
       features: [
-        'Real-time voice conversations',
-        'Natural interruptions',
-        'Sub-second latency',
-        'Voice Activity Detection',
-        'Automatic transcription'
-      ]
+        'Natural human-like voices',
+        '6 voice options',
+        'Adjustable speed (0.25x - 4.0x)',
+        'High-quality audio (HD)',
+        'Multiple languages supported'
+      ],
+      pricing: {
+        model: 'tts-1-hd',
+        costPer1MChars: 30,
+        estimatedCostPerResponse: 0.0075 // ~250 chars avg
+      }
     });
   } catch (error) {
     console.error('Error checking voice status:', error);
@@ -147,40 +290,15 @@ router.get('/stats/:userId', auth, async (req, res) => {
       }
     ]);
 
-    // Get most active days
-    const activeByDay = await CompanionConversation.aggregate([
-      {
-        $match: {
-          userId,
-          timestamp: { $gte: thirtyDaysAgo }
-        }
-      },
-      {
-        $group: {
-          _id: { $dayOfWeek: '$timestamp' },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      }
-    ]);
-
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const mostActiveDays = activeByDay.map(day => ({
-      day: dayNames[day._id - 1],
-      conversations: day.count
-    }));
-
     res.json({
       totalConversations,
       last30Days: recentConversations,
       averagePerDay: messagesPerDay[0]?.avgPerDay || 0,
-      mostActiveDays,
       estimatedCost: {
-        last30Days: (recentConversations * 0.30).toFixed(2), // Rough estimate
-        perMessage: 0.30,
-        currency: 'USD'
+        last30Days: (recentConversations * 0.0075).toFixed(4), // ~250 chars per response
+        perMessage: 0.0075,
+        currency: 'USD',
+        note: 'Based on ~250 characters per response with TTS-1-HD'
       }
     });
   } catch (error) {
@@ -229,41 +347,50 @@ router.post('/feedback/:conversationId', auth, async (req, res) => {
 
 /**
  * @route   GET /api/voice/cost-estimate
- * @desc    Get cost estimates for voice usage
+ * @desc    Get cost estimates for TTS usage
  * @access  Public
  */
 router.get('/cost-estimate', (req, res) => {
-  const costs = realtimeVoiceService.getEstimatedCost();
-  
+  const avgCharsPerResponse = 250;
+  const costPer1MChars = 30; // USD
+  const costPerChar = costPer1MChars / 1000000;
+  const costPerResponse = avgCharsPerResponse * costPerChar;
+
   const scenarios = [
     {
-      usage: '5 min/day',
-      daily: (5 * costs.total).toFixed(2),
-      monthly: (5 * costs.total * 30).toFixed(2),
+      usage: '10 responses/day',
+      daily: (10 * costPerResponse).toFixed(4),
+      monthly: (10 * costPerResponse * 30).toFixed(2),
       description: 'Light user - quick check-ins'
     },
     {
-      usage: '15 min/day',
-      daily: (15 * costs.total).toFixed(2),
-      monthly: (15 * costs.total * 30).toFixed(2),
+      usage: '30 responses/day',
+      daily: (30 * costPerResponse).toFixed(4),
+      monthly: (30 * costPerResponse * 30).toFixed(2),
       description: 'Regular user - daily conversations'
     },
     {
-      usage: '30 min/day',
-      daily: (30 * costs.total).toFixed(2),
-      monthly: (30 * costs.total * 30).toFixed(2),
-      description: 'Heavy user - extended coaching sessions'
+      usage: '100 responses/day',
+      daily: (100 * costPerResponse).toFixed(4),
+      monthly: (100 * costPerResponse * 30).toFixed(2),
+      description: 'Heavy user - extended usage'
     }
   ];
 
   res.json({
-    baseCosts: costs,
+    model: 'tts-1-hd',
+    baseCosts: {
+      per1MChars: costPer1MChars,
+      perChar: costPerChar,
+      perResponse: costPerResponse,
+      avgResponseLength: avgCharsPerResponse
+    },
     scenarios,
     tips: [
-      'Voice conversations are charged per minute of audio',
-      'Pausing conversation stops the meter',
-      'Text chat is much cheaper for simple questions',
-      'Voice is best for coaching and complex discussions'
+      'TTS charges by character count, not audio length',
+      'Shorter responses = lower costs',
+      'HD quality (tts-1-hd) costs 2x standard but sounds much better',
+      'Average cost per response: less than $0.01'
     ]
   });
 });
