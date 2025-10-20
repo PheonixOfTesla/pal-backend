@@ -1,7 +1,7 @@
 // Src/routes/voice.js - OpenAI TTS Integration
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { protect } = require('../middleware/auth');
 const CompanionConversation = require('../models/CompanionConversation');
 
 /**
@@ -9,7 +9,7 @@ const CompanionConversation = require('../models/CompanionConversation');
  * @desc    Convert text to speech using OpenAI TTS HD
  * @access  Private
  */
-router.post('/speak', auth, async (req, res) => {
+router.post('/speak', protect, async (req, res) => {
   try {
     const { text, voice = 'nova', speed = 1.0 } = req.body;
 
@@ -186,7 +186,7 @@ router.get('/status', (req, res) => {
  * @desc    Get voice conversation history
  * @access  Private
  */
-router.get('/history/:userId', auth, async (req, res) => {
+router.get('/history/:userId', protect, async (req, res) => {
   try {
     const { userId } = req.params;
     const { limit = 50, skip = 0 } = req.query;
@@ -223,7 +223,7 @@ router.get('/history/:userId', auth, async (req, res) => {
  * @desc    Clear voice conversation history
  * @access  Private
  */
-router.delete('/history/:userId', auth, async (req, res) => {
+router.delete('/history/:userId', protect, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -249,7 +249,7 @@ router.delete('/history/:userId', auth, async (req, res) => {
  * @desc    Get voice usage statistics
  * @access  Private
  */
-router.get('/stats/:userId', auth, async (req, res) => {
+router.get('/stats/:userId', protect, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -312,7 +312,7 @@ router.get('/stats/:userId', auth, async (req, res) => {
  * @desc    Submit feedback on a voice conversation
  * @access  Private
  */
-router.post('/feedback/:conversationId', auth, async (req, res) => {
+router.post('/feedback/:conversationId', protect, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { rating, feedback } = req.body;
