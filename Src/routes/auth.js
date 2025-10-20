@@ -1,4 +1,4 @@
-// Src/routes/auth.js - COMPLETE VERSION
+// Src/routes/auth.js - UPDATED WITH PREFERENCES ROUTE
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
@@ -26,6 +26,9 @@ router.put('/reset-password/:resetToken', authController.resetPassword);
 
 // Get current user info from token
 router.get('/me', protect, authController.getCurrentUser);
+
+// ✅ NEW: Update user preferences (for onboarding)
+router.put('/me', protect, authController.updateUserPreferences);
 
 // Change password (for logged-in users)
 router.put('/change-password', protect, authController.changePassword);
@@ -82,6 +85,16 @@ router.get('/docs', (req, res) => {
                         Authorization: 'Bearer {token}'
                     },
                     description: 'Get current user information from token'
+                },
+                PUT_me: {
+                    path: '/api/auth/me',
+                    headers: {
+                        Authorization: 'Bearer {token}'
+                    },
+                    body: {
+                        preferences: 'object (required) - User preferences from onboarding'
+                    },
+                    description: 'Update user preferences (onboarding data)'
                 },
                 PUT_change_password: {
                     path: '/api/auth/change-password',
