@@ -38,7 +38,7 @@ app.use(helmet());
 
 // CORS Configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:3000',
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -121,22 +121,19 @@ mongoose.connection.on('reconnected', () => {
 // IMPORT ALL ROUTES
 // ============================================================================
 
-// Authentication & User Management
+// Authentication, Users & Subscriptions
 const authRoutes = require('./Src/routes/auth');
 const userRoutes = require('./Src/routes/user');
+const subscriptionRoutes = require('./Src/routes/subscription');
 
-// 7 Planetary System Routes (Consolidated Architecture)
-const mercuryRoutes = require('./Src/routes/mercury');      // Health & Biometrics (38 endpoints)
+// 7 Planetary System Routes (Fully Consolidated)
+const mercuryRoutes = require('./Src/routes/mercury');      // Health, Biometrics, Wearables & Recovery (38 endpoints)
 const venusRoutes = require('./Src/routes/venus');          // Fitness & Training (88 endpoints)
 const earthRoutes = require('./Src/routes/earth');          // Calendar & Energy (11 endpoints)
 const marsRoutes = require('./Src/routes/mars');            // Goals & Habits (18 endpoints)
 const jupiterRoutes = require('./Src/routes/jupiter');      // Financial Management (16 endpoints)
 const saturnRoutes = require('./Src/routes/saturn');        // Legacy Planning (12 endpoints)
 const phoenixRoutes = require('./Src/routes/phoenix');      // AI Companion (76 endpoints)
-
-// Specialized System Routes
-const wearableRoutes = require('./Src/routes/wearables');   // Wearable device management
-const recoveryRoutes = require('./Src/routes/recovery');    // Recovery optimization system
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT
@@ -150,18 +147,19 @@ app.get('/health', (req, res) => {
     mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
     environment: process.env.NODE_ENV || 'development',
     version: '1.0.0',
-    endpoints: {
-      auth: 'Authentication & user management',
-      mercury: 38,   // Health & Biometrics
-      venus: 88,     // Fitness & Training
-      earth: 11,     // Calendar & Energy
-      mars: 18,      // Goals & Habits
-      jupiter: 16,   // Financial Management
-      saturn: 12,    // Legacy Planning
-      phoenix: 76,   // AI Companion
-      wearables: 'Device management',
-      recovery: 'Recovery optimization',
-      total: '259+'
+    routes: {
+      auth: 'Authentication',
+      users: 'User management',
+      subscriptions: 'Subscription management',
+      mercury: '38 endpoints (Health, Biometrics, Wearables, Recovery)',
+      venus: '88 endpoints (Fitness & Training)',
+      earth: '11 endpoints (Calendar & Energy)',
+      mars: '18 endpoints (Goals & Habits)',
+      jupiter: '16 endpoints (Financial)',
+      saturn: '12 endpoints (Legacy)',
+      phoenix: '76 endpoints (AI Companion)',
+      total_routes: 10,
+      total_endpoints: '259+'
     }
   };
   res.status(200).json(healthCheck);
@@ -190,12 +188,13 @@ app.get('/', (req, res) => {
 // MOUNT ALL ROUTES
 // ============================================================================
 
-// Authentication & User Management (Public + Protected)
+// Authentication, Users & Subscriptions
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
-// 7 Planetary Systems (All require authentication via protect middleware in routes)
-app.use('/api/mercury', mercuryRoutes);     // Health & Biometrics - 38 endpoints
+// 7 Planetary Systems (All fully consolidated - no separate wearables/recovery routes)
+app.use('/api/mercury', mercuryRoutes);     // Health, Biometrics, Wearables & Recovery - 38 endpoints
 app.use('/api/venus', venusRoutes);         // Fitness & Training - 88 endpoints
 app.use('/api/earth', earthRoutes);         // Calendar & Energy - 11 endpoints
 app.use('/api/mars', marsRoutes);           // Goals & Habits - 18 endpoints
@@ -203,14 +202,10 @@ app.use('/api/jupiter', jupiterRoutes);     // Financial Management - 16 endpoin
 app.use('/api/saturn', saturnRoutes);       // Legacy Planning - 12 endpoints
 app.use('/api/phoenix', phoenixRoutes);     // AI Companion - 76 endpoints
 
-// Specialized Systems
-app.use('/api/wearables', wearableRoutes);  // Wearable device management
-app.use('/api/recovery', recoveryRoutes);   // Recovery optimization system
-
-console.log('✅ All routes mounted successfully');
-console.log('   📡 Authentication & User Management');
-console.log('   🪐 7 Planetary Systems (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Phoenix)');
-console.log('   ⚙️  Specialized Systems (Wearables, Recovery)');
+console.log('✅ All 10 routes mounted successfully');
+console.log('   🔐 Auth, Users & Subscriptions (3 routes)');
+console.log('   🪐 7 Planetary Systems - Fully Consolidated');
+console.log('   📡 Mercury includes: Wearables & Recovery');
 console.log('📡 Total API Endpoints: 259+');
 
 // ============================================================================
@@ -330,22 +325,21 @@ const server = app.listen(PORT, () => {
   console.log('='.repeat(60));
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
   console.log(`💾 Database: ${mongoose.connection.name}`);
-  console.log('\n🪐 PLANETARY SYSTEMS ACTIVE:');
-  console.log('   ☿ Mercury  - Health & Biometrics (38 endpoints)');
-  console.log('   ♀ Venus    - Fitness & Training (88 endpoints)');
-  console.log('   ⊕ Earth    - Calendar & Energy (11 endpoints)');
-  console.log('   ♂ Mars     - Goals & Habits (18 endpoints)');
-  console.log('   ♃ Jupiter  - Financial Management (16 endpoints)');
-  console.log('   ♄ Saturn   - Legacy Planning (12 endpoints)');
-  console.log('   🔥 Phoenix  - AI Companion (76 endpoints)');
-  console.log('\n🔐 AUTH & SYSTEMS:');
-  console.log('   🔑 Auth     - Authentication & user management');
-  console.log('   👤 Users    - User profile & management');
-  console.log('   ⌚ Wearables - Device integration & sync');
-  console.log('   💪 Recovery  - Recovery optimization');
-  console.log(`\n📡 Total Endpoints: 259+`);
+  console.log('\n🔐 AUTH & MANAGEMENT:');
+  console.log('   🔑 Auth          - Authentication');
+  console.log('   👤 Users         - User management');
+  console.log('   💳 Subscriptions - Stripe integration');
+  console.log('\n🪐 7 PLANETARY SYSTEMS (FULLY CONSOLIDATED):');
+  console.log('   ☿ Mercury  - Health, Biometrics, Wearables, Recovery (38)');
+  console.log('   ♀ Venus    - Fitness & Training (88)');
+  console.log('   ⊕ Earth    - Calendar & Energy (11)');
+  console.log('   ♂ Mars     - Goals & Habits (18)');
+  console.log('   ♃ Jupiter  - Financial Management (16)');
+  console.log('   ♄ Saturn   - Legacy Planning (12)');
+  console.log('   🔥 Phoenix  - AI Companion (76)');
+  console.log(`\n📡 Total: 10 Route Files | 259+ Endpoints`);
   console.log(`\n✅ Server ready at: http://localhost:${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
   console.log('='.repeat(60) + '\n');
