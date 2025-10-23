@@ -15,7 +15,7 @@ const BodyComposition = require('../models/BodyComposition');
 const deviceSync = require('../services/deviceSync');
 const biometricEngine = require('../services/biometricEngine');
 const recoveryCalc = require('../services/recoveryCalc');
-const dexaSimulator = require('../services//dexaSimulator');
+const dexaSimulator = require('../services/dexaSimulator');
 const metabolicCalculator = require('../services/metabolicCalculator');
 const healthRatios = require('../services/healthRatios');
 
