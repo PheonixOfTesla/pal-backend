@@ -1,353 +1,354 @@
-// server.js (BACKEND ROOT)
+// ============================================================================
+// PHOENIX BACKEND - MASTER SERVER.JS
+// ============================================================================
+// Consolidates all 7 Planetary Controllers:
+// - Mercury (Health & Biometrics) - 38 endpoints
+// - Venus (Fitness & Training) - 88 endpoints  
+// - Earth (Calendar & Energy) - 11 endpoints
+// - Mars (Goals & Habits) - 20 endpoints
+// - Jupiter (Financial Management) - 16 endpoints
+// - Saturn (Legacy Planning) - 12 endpoints
+// - Phoenix (AI Companion) - 76 endpoints
+// TOTAL: 261 API endpoints
+// ============================================================================
+
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const mongoSanitize = require('express-mongo-sanitize');
 const compression = require('compression');
 const morgan = require('morgan');
-const http = require('http');
-const WebSocket = require('ws');
+
+// ============================================================================
+// EXPRESS APP INITIALIZATION
+// ============================================================================
 
 const app = express();
-const server = http.createServer(app);
+const PORT = process.env.PORT || 5000;
 
-// ============================================
-// SECURITY & PERFORMANCE MIDDLEWARE
-// ============================================
+// ============================================================================
+// SECURITY MIDDLEWARE
+// ============================================================================
 
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
+// Helmet - Security headers
+app.use(helmet());
 
-app.use(compression());
-
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-
-// ============================================
-// CORS CONFIGURATION - FIXED
-// ============================================
-
-const allowedOrigins = [
-  'https://pal-frontend-vert.vercel.app',
-  'https://phoenix-fe-kappa.vercel.app',
-  'https://clockwork.fit',
-  'https://www.clockwork.fit',
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002'
-];
-
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+// CORS Configuration
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
+  optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+};
+app.use(cors(corsOptions));
 
-// ============================================
-// BODY PARSING
-// ============================================
+// Rate Limiting - Prevent brute force attacks
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/', limiter);
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Sanitize data to prevent MongoDB injection
+app.use(mongoSanitize());
 
-// Request logging
+// ============================================================================
+// BODY PARSING MIDDLEWARE
+// ============================================================================
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Compression middleware for response optimization
+app.use(compression());
+
+// ============================================================================
+// LOGGING MIDDLEWARE
+// ============================================================================
+
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
+
+// Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// ============================================
-// DATABASE CONNECTION
-// ============================================
+// ============================================================================
+// MONGODB CONNECTION
+// ============================================================================
 
-const connectDB = async () => {
-  try {
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    };
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/phoenix';
 
-    await mongoose.connect(process.env.MONGODB_URI, options);
-    
-    console.log('✅ MongoDB Connected Successfully');
-    console.log(`   Database: ${mongoose.connection.name}`);
-    console.log(`   Host: ${mongoose.connection.host}`);
-  } catch (error) {
-    console.error('❌ MongoDB Connection Error:', error.message);
-    process.exit(1);
-  }
-};
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => {
+  console.log('✅ MongoDB Connected Successfully');
+  console.log(`📍 Database: ${mongoose.connection.name}`);
+})
+.catch((err) => {
+  console.error('❌ MongoDB Connection Error:', err.message);
+  process.exit(1);
+});
 
-// MongoDB event listeners
+// Handle MongoDB connection events
 mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB error:', err);
+  console.error('MongoDB connection error:', err);
 });
 
 mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️  MongoDB disconnected');
+  console.log('MongoDB disconnected');
 });
 
 mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB reconnected');
+  console.log('MongoDB reconnected');
 });
 
-// ============================================
-// WEBSOCKET SERVER FOR VOICE
-// ============================================
+// ============================================================================
+// IMPORT ALL ROUTES
+// ============================================================================
 
-const wss = new WebSocket.Server({ server, path: '/api/voice/realtime' });
-const realtimeVoiceController = require('./Src/controllers/realtimeVoiceController');
+// Authentication & User Management
+const authRoutes = require('./Src/routes/auth');
+const userRoutes = require('./Src/routes/user');
 
-wss.on('connection', (ws, req) => {
-  console.log('🎤 New WebSocket connection');
-  
-  // Extract user from query or token
-  const urlParams = new URLSearchParams(req.url.split('?')[1]);
-  const token = urlParams.get('token');
-  
-  // Attach user info to request (simplified - enhance with JWT verification)
-  req.user = { id: urlParams.get('userId') };
-  
-  realtimeVoiceController.handleConnection(ws, req);
-  
-  ws.on('close', () => {
-    console.log('🔇 WebSocket connection closed');
-  });
-  
-  ws.on('error', (error) => {
-    console.error('❌ WebSocket error:', error);
-  });
-});
+// 7 Planetary System Routes (Consolidated Architecture)
+const mercuryRoutes = require('./Src/routes/mercury');      // Health & Biometrics (38 endpoints)
+const venusRoutes = require('./Src/routes/venus');          // Fitness & Training (88 endpoints)
+const earthRoutes = require('./Src/routes/earth');          // Calendar & Energy (11 endpoints)
+const marsRoutes = require('./Src/routes/mars');            // Goals & Habits (18 endpoints)
+const jupiterRoutes = require('./Src/routes/jupiter');      // Financial Management (16 endpoints)
+const saturnRoutes = require('./Src/routes/saturn');        // Legacy Planning (12 endpoints)
+const phoenixRoutes = require('./Src/routes/phoenix');      // AI Companion (76 endpoints)
 
-console.log('✅ WebSocket server initialized on /api/voice/realtime');
+// Specialized System Routes
+const wearableRoutes = require('./Src/routes/wearables');   // Wearable device management
+const recoveryRoutes = require('./Src/routes/recovery');    // Recovery optimization system
 
-// ============================================
-// HEALTH CHECK & ROOT ROUTES
-// ============================================
-
-app.get('/', (req, res) => {
-  res.json({ 
-    message: '🔥 Phoenix Backend API',
-    status: 'active',
-    version: '2.0.0',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-  });
-});
+// ============================================================================
+// HEALTH CHECK ENDPOINT
+// ============================================================================
 
 app.get('/health', (req, res) => {
-  const healthcheck = {
-    uptime: process.uptime(),
+  const healthCheck = {
     status: 'OK',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    memory: {
-      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + 'MB'
+    uptime: process.uptime(),
+    mongodb: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
+    environment: process.env.NODE_ENV || 'development',
+    version: '1.0.0',
+    endpoints: {
+      auth: 'Authentication & user management',
+      mercury: 38,   // Health & Biometrics
+      venus: 88,     // Fitness & Training
+      earth: 11,     // Calendar & Energy
+      mars: 18,      // Goals & Habits
+      jupiter: 16,   // Financial Management
+      saturn: 12,    // Legacy Planning
+      phoenix: 76,   // AI Companion
+      wearables: 'Device management',
+      recovery: 'Recovery optimization',
+      total: '259+'
     }
   };
-  
-  res.json(healthcheck);
+  res.status(200).json(healthCheck);
 });
 
-app.get('/api', (req, res) => {
-  res.json({ 
-    message: '🔥 Phoenix API v2.0',
-    status: 'active',
-    systems: {
-      mercury: 'Health & Vitals',
-      venus: 'Training & Fitness',
-      earth: 'Schedule & Time',
-      mars: 'Goals & Habits',
-      jupiter: 'Wealth & Finance',
-      saturn: 'Legacy & Social'
-    },
-    endpoints: {
-      auth: '/api/auth',
-      intelligence: '/api/intelligence',
-      wearables: '/api/wearables',
-      workouts: '/api/workouts',
-      exercises: '/api/exercises',
-      goals: '/api/goals',
-      measurements: '/api/measurements',
-      nutrition: '/api/nutrition',
-      interventions: '/api/interventions',
-      predictions: '/api/predictions',
-      companion: '/api/companion',
-      voice: '/api/voice',
-      earth: '/api/earth',
-      jupiter: '/api/jupiter',
-      saturn: '/api/saturn',
-      users: '/api/users',
-      subscription: '/api/subscription'
-    }
+// Root endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: '🚀 Phoenix Backend API',
+    version: '1.0.0',
+    status: 'Running',
+    documentation: '/api/docs',
+    planets: [
+      'Mercury (Health)',
+      'Venus (Fitness)', 
+      'Earth (Calendar)',
+      'Mars (Goals)',
+      'Jupiter (Finance)',
+      'Saturn (Legacy)',
+      'Phoenix (AI)'
+    ]
   });
 });
 
-// ============================================
-// LOAD ALL ROUTES
-// ============================================
+// ============================================================================
+// MOUNT ALL ROUTES
+// ============================================================================
 
-const routes = [
-  { path: '/api/auth', file: './Src/routes/auth', name: 'Auth', critical: true },
-  { path: '/api/intelligence', file: './Src/routes/intelligence', name: 'Intelligence' },
-  { path: '/api/wearables', file: './Src/routes/wearables', name: 'Wearables' },
-  { path: '/api/workouts', file: './Src/routes/workout', name: 'Workouts' },
-  { path: '/api/exercises', file: './Src/routes/exercises', name: 'Exercises' },
-  { path: '/api/goals', file: './Src/routes/goals', name: 'Goals' },
-  { path: '/api/measurements', file: './Src/routes/measurements', name: 'Measurements' },
-  { path: '/api/nutrition', file: './Src/routes/nutrition', name: 'Nutrition' },
-  { path: '/api/interventions', file: './Src/routes/intervention', name: 'Interventions' },
-  { path: '/api/predictions', file: './Src/routes/prediction', name: 'Predictions' },
-  { path: '/api/companion', file: './Src/routes/companion', name: 'Companion' },
-  { path: '/api/voice', file: './Src/routes/voice', name: 'Voice' },
-  { path: '/api/earth', file: './Src/routes/earth', name: 'Earth (Calendar)' },
-  { path: '/api/jupiter', file: './Src/routes/jupiter', name: 'Jupiter (Finance)' },
-  { path: '/api/saturn', file: './Src/routes/saturn', name: 'Saturn (Legacy)' },
-  { path: '/api/users', file: './Src/routes/user', name: 'Users' },
-  { path: '/api/subscription', file: './Src/routes/subscription', name: 'Subscription' }
-];
+// Authentication & User Management (Public + Protected)
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 
-routes.forEach(({ path, file, name, critical }) => {
-  try {
-    const route = require(file);
-    app.use(path, route);
-    console.log(`✅ ${name} routes loaded`);
-  } catch (error) {
-    if (critical) {
-      console.error(`❌ CRITICAL: ${name} routes failed:`, error.message);
-      process.exit(1);
-    } else {
-      console.warn(`⚠️  ${name} routes not loaded`);
-    }
-  }
+// 7 Planetary Systems (All require authentication via protect middleware in routes)
+app.use('/api/mercury', mercuryRoutes);     // Health & Biometrics - 38 endpoints
+app.use('/api/venus', venusRoutes);         // Fitness & Training - 88 endpoints
+app.use('/api/earth', earthRoutes);         // Calendar & Energy - 11 endpoints
+app.use('/api/mars', marsRoutes);           // Goals & Habits - 18 endpoints
+app.use('/api/jupiter', jupiterRoutes);     // Financial Management - 16 endpoints
+app.use('/api/saturn', saturnRoutes);       // Legacy Planning - 12 endpoints
+app.use('/api/phoenix', phoenixRoutes);     // AI Companion - 76 endpoints
+
+// Specialized Systems
+app.use('/api/wearables', wearableRoutes);  // Wearable device management
+app.use('/api/recovery', recoveryRoutes);   // Recovery optimization system
+
+console.log('✅ All routes mounted successfully');
+console.log('   📡 Authentication & User Management');
+console.log('   🪐 7 Planetary Systems (Mercury, Venus, Earth, Mars, Jupiter, Saturn, Phoenix)');
+console.log('   ⚙️  Specialized Systems (Wearables, Recovery)');
+console.log('📡 Total API Endpoints: 259+');
+
+// ============================================================================
+// ERROR HANDLING MIDDLEWARE
+// ============================================================================
+
+// 404 Handler - Route not found
+app.use((req, res, next) => {
+  const error = new Error(`Route not found - ${req.originalUrl}`);
+  error.status = 404;
+  next(error);
 });
 
-// ============================================
-// ERROR HANDLING
-// ============================================
-
-// 404 Handler
-app.use((req, res) => {
-  res.status(404).json({ 
-    success: false,
-    message: 'Route not found',
-    path: req.path,
-    method: req.method,
-    availableEndpoints: '/api for full list'
-  });
-});
-
-// Global Error Handler
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err);
-  
+  console.error('Error:', err);
+
+  // Mongoose validation error
+  if (err.name === 'ValidationError') {
+    const errors = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({
+      success: false,
+      error: 'Validation Error',
+      message: errors
+    });
+  }
+
+  // Mongoose duplicate key error
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
+    return res.status(400).json({
+      success: false,
+      error: 'Duplicate Error',
+      message: `${field} already exists`
+    });
+  }
+
+  // JWT errors
+  if (err.name === 'JsonWebTokenError') {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication Error',
+      message: 'Invalid token'
+    });
+  }
+
+  if (err.name === 'TokenExpiredError') {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication Error',
+      message: 'Token expired'
+    });
+  }
+
+  // Default error response
   const statusCode = err.status || err.statusCode || 500;
-  const message = err.message || 'Internal server error';
-  
+  const message = err.message || 'Internal Server Error';
+
   res.status(statusCode).json({
     success: false,
-    message,
-    ...(process.env.NODE_ENV === 'development' && { 
-      stack: err.stack,
-      error: err 
-    })
+    error: err.name || 'ServerError',
+    message: process.env.NODE_ENV === 'development' ? message : 'Something went wrong',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
 
-// ============================================
+// ============================================================================
 // GRACEFUL SHUTDOWN
-// ============================================
+// ============================================================================
 
-const gracefulShutdown = async (signal) => {
-  console.log(`\n${signal} received. Starting graceful shutdown...`);
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+function gracefulShutdown(signal) {
+  console.log(`\n${signal} signal received: closing HTTP server`);
   
-  server.close(async () => {
+  server.close(() => {
     console.log('HTTP server closed');
     
-    try {
-      await mongoose.connection.close();
+    mongoose.connection.close(false, () => {
       console.log('MongoDB connection closed');
       process.exit(0);
-    } catch (error) {
-      console.error('Error during shutdown:', error);
-      process.exit(1);
-    }
+    });
   });
-  
+
   // Force shutdown after 10 seconds
   setTimeout(() => {
-    console.error('Forced shutdown after timeout');
+    console.error('Forcing shutdown after timeout');
     process.exit(1);
   }, 10000);
-};
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+}
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error);
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+  console.error(err.name, err.message);
+  console.error(err.stack);
   process.exit(1);
 });
 
-process.on('unhandledRejection', (error) => {
-  console.error('❌ Unhandled Promise Rejection:', error);
-  process.exit(1);
-});
-
-// ============================================
-// START SERVER
-// ============================================
-
-const PORT = process.env.PORT || 8080;
-
-const startServer = async () => {
-  try {
-    // Connect to database first
-    await connectDB();
-    
-    // Then start HTTP server
-    server.listen(PORT, () => {
-      console.log(`
-╔════════════════════════════════════════════════════════════╗
-║                                                            ║
-║            🔥 PHOENIX BACKEND - COMPLETE SYSTEM            ║
-║                                                            ║
-║  Status:       Active & Running                            ║
-║  Port:         ${PORT}                                          ║
-║  Environment:  ${process.env.NODE_ENV || 'development'}                                ║
-║  Database:     Connected                                   ║
-║  WebSocket:    Active (Voice AI)                           ║
-║                                                            ║
-║  API Base:     http://localhost:${PORT}/api                  ║
-║  Health:       http://localhost:${PORT}/health               ║
-║                                                            ║
-║  Systems:      Mercury, Venus, Earth, Mars,                ║
-║                Jupiter, Saturn                             ║
-║                                                            ║
-╚════════════════════════════════════════════════════════════╝
-      `);
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('UNHANDLED REJECTION! 💥 Shutting down...');
+  console.error(err.name, err.message);
+  server.close(() => {
     process.exit(1);
-  }
-};
+  });
+});
 
-// Start the server
-startServer();
+// ============================================================================
+// START SERVER
+// ============================================================================
 
-module.exports = { app, server };
+const server = app.listen(PORT, () => {
+  console.log('\n' + '='.repeat(60));
+  console.log('🚀 PHOENIX BACKEND SERVER STARTED');
+  console.log('='.repeat(60));
+  console.log(`📍 Port: ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`💾 Database: ${mongoose.connection.name}`);
+  console.log('\n🪐 PLANETARY SYSTEMS ACTIVE:');
+  console.log('   ☿ Mercury  - Health & Biometrics (38 endpoints)');
+  console.log('   ♀ Venus    - Fitness & Training (88 endpoints)');
+  console.log('   ⊕ Earth    - Calendar & Energy (11 endpoints)');
+  console.log('   ♂ Mars     - Goals & Habits (18 endpoints)');
+  console.log('   ♃ Jupiter  - Financial Management (16 endpoints)');
+  console.log('   ♄ Saturn   - Legacy Planning (12 endpoints)');
+  console.log('   🔥 Phoenix  - AI Companion (76 endpoints)');
+  console.log('\n🔐 AUTH & SYSTEMS:');
+  console.log('   🔑 Auth     - Authentication & user management');
+  console.log('   👤 Users    - User profile & management');
+  console.log('   ⌚ Wearables - Device integration & sync');
+  console.log('   💪 Recovery  - Recovery optimization');
+  console.log(`\n📡 Total Endpoints: 259+`);
+  console.log(`\n✅ Server ready at: http://localhost:${PORT}`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
+  console.log('='.repeat(60) + '\n');
+});
+
+module.exports = app;
