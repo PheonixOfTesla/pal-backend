@@ -1,25 +1,9 @@
 // Src/services/phoenix/butlerAutomation.js
-// PRODUCTION READY - Butler automation with Puppeteer
-// Copy to: Src/services/phoenix/butlerAutomation.js
+// SIMPLIFIED VERSION - No Puppeteer dependency
 
-const puppeteer = require('puppeteer');
 const ButlerAction = require('../../models/phoenix/ButlerAction');
 
 class ButlerAutomation {
-  constructor() {
-    this.browser = null;
-  }
-
-  async getBrowser() {
-    if (!this.browser || !this.browser.isConnected()) {
-      this.browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-    }
-    return this.browser;
-  }
-
   // Make restaurant reservation
   async makeReservation({ userId, restaurantName, date, time, partySize, preferences = {} }) {
     const action = await ButlerAction.create({
@@ -38,7 +22,6 @@ class ButlerAutomation {
     };
   }
 
-  // Get reservations
   async getReservations(userId, status = 'all', upcoming = true) {
     const query = { userId, actionType: 'reservation' };
     if (status !== 'all') query.status = status;
@@ -48,7 +31,6 @@ class ButlerAutomation {
     return reservations;
   }
 
-  // Order food
   async orderFood({ userId, restaurant, items = [] }) {
     const action = await ButlerAction.create({
       userId,
@@ -66,7 +48,6 @@ class ButlerAutomation {
     };
   }
 
-  // Get food history
   async getFoodHistory(userId, days = 90) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -78,7 +59,6 @@ class ButlerAutomation {
     }).sort({ createdAt: -1 }).lean();
   }
 
-  // Book ride
   async bookRide({ userId, pickup, destination, rideType = 'uberX' }) {
     const action = await ButlerAction.create({
       userId,
@@ -96,7 +76,6 @@ class ButlerAutomation {
     };
   }
 
-  // Get ride history
   async getRideHistory(userId) {
     return await ButlerAction.find({
       userId,
@@ -105,10 +84,8 @@ class ButlerAutomation {
   }
 
   async cleanup() {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-    }
+    // No browser to cleanup in simplified version
+    return Promise.resolve();
   }
 }
 
