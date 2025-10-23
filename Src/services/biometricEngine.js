@@ -1,8 +1,8 @@
 // Src/services/mercury/biometricEngine.js
-const WearableData = require('../../models/WearableData');
-const SleepData = require('../../models/SleepData');
-const BodyComposition = require('../../models/BodyComposition');
-const HealthMetric = require('../../models/HealthMetric');
+const WearableData = require('../models/WearableData');
+const SleepData = require('../models/SleepData');
+const BodyComposition = require('../models/BodyComposition');
+const HealthMetric = require('../models/HealthMetric');
 const dexaSimulator = require('./dexaSimulator');
 const metabolicCalculator = require('./metabolicCalculator');
 const healthRatios = require('./healthRatios');
