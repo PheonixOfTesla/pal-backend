@@ -97,7 +97,7 @@ mongoose.connect(MONGODB_URI, {
 })
 .then(() => {
   console.log('✅ MongoDB Connected Successfully');
-  console.log(`📍 Database: ${mongoose.connection.name}`);
+  console.log(`🔗 Database: ${mongoose.connection.name}`);
 })
 .catch((err) => {
   console.error('❌ MongoDB Connection Error:', err.message);
@@ -273,6 +273,36 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================================================
+// START SERVER (MUST BE BEFORE SHUTDOWN HANDLERS)
+// ============================================================================
+
+const server = app.listen(PORT, () => {
+  console.log('\n' + '='.repeat(60));
+  console.log('🚀 PHOENIX BACKEND SERVER STARTED');
+  console.log('='.repeat(60));
+  console.log(`🔌 Port: ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
+  console.log(`💾 Database: ${mongoose.connection.name}`);
+  console.log('\n🔐 AUTH & MANAGEMENT:');
+  console.log('   🔑 Auth          - Authentication');
+  console.log('   👤 Users         - User management');
+  console.log('   💳 Subscriptions - Stripe integration');
+  console.log('\n🪐 7 PLANETARY SYSTEMS (FULLY CONSOLIDATED):');
+  console.log('   ☿ Mercury  - Health, Biometrics, Wearables, Recovery (38)');
+  console.log('   ♀ Venus    - Fitness & Training (88)');
+  console.log('   ⊕ Earth    - Calendar & Energy (11)');
+  console.log('   ♂ Mars     - Goals & Habits (18)');
+  console.log('   ♃ Jupiter  - Financial Management (16)');
+  console.log('   ♄ Saturn   - Legacy Planning (12)');
+  console.log('   🔥 Phoenix  - AI Companion (76)');
+  console.log(`\n📡 Total: 10 Route Files | 259+ Endpoints`);
+  console.log(`\n✅ Server ready at: http://localhost:${PORT}`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
+  console.log('='.repeat(60) + '\n');
+});
+
+// ============================================================================
 // GRACEFUL SHUTDOWN
 // ============================================================================
 
@@ -313,36 +343,6 @@ process.on('unhandledRejection', (err) => {
   server.close(() => {
     process.exit(1);
   });
-});
-
-// ============================================================================
-// START SERVER
-// ============================================================================
-
-const server = app.listen(PORT, () => {
-  console.log('\n' + '='.repeat(60));
-  console.log('🚀 PHOENIX BACKEND SERVER STARTED');
-  console.log('='.repeat(60));
-  console.log(`📍 Port: ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
-  console.log(`💾 Database: ${mongoose.connection.name}`);
-  console.log('\n🔐 AUTH & MANAGEMENT:');
-  console.log('   🔑 Auth          - Authentication');
-  console.log('   👤 Users         - User management');
-  console.log('   💳 Subscriptions - Stripe integration');
-  console.log('\n🪐 7 PLANETARY SYSTEMS (FULLY CONSOLIDATED):');
-  console.log('   ☿ Mercury  - Health, Biometrics, Wearables, Recovery (38)');
-  console.log('   ♀ Venus    - Fitness & Training (88)');
-  console.log('   ⊕ Earth    - Calendar & Energy (11)');
-  console.log('   ♂ Mars     - Goals & Habits (18)');
-  console.log('   ♃ Jupiter  - Financial Management (16)');
-  console.log('   ♄ Saturn   - Legacy Planning (12)');
-  console.log('   🔥 Phoenix  - AI Companion (76)');
-  console.log(`\n📡 Total: 10 Route Files | 259+ Endpoints`);
-  console.log(`\n✅ Server ready at: http://localhost:${PORT}`);
-  console.log(`✅ Health check: http://localhost:${PORT}/health`);
-  console.log('='.repeat(60) + '\n');
 });
 
 module.exports = app;
