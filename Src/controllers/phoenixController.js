@@ -6,10 +6,10 @@
 //          Interventions, Intelligence, Voice AI, ML Training, Butler Actions
 // ============================================
 
-const CompanionConversation = require('../models/CompanionConversation');
-const CorrelationPattern = require('../models/CorrelationPattern');
-const Prediction = require('../models/Prediction');
-const Intervention = require('../models/Intervention');
+const CompanionConversation = require('../models/phoenix/CompanionConversation');
+const CorrelationPattern = require('../models/phoenix/CorrelationPattern');
+const Prediction = require('../models/phoenix/Prediction');
+const Intervention = require('../models/phoenix/Intervention');
 const BehaviorPattern = require('../models/BehaviorPattern');
 const User = require('../models/User');
 

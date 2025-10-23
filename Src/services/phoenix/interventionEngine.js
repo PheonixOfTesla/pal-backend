@@ -1,5 +1,5 @@
 // Intervention Engine - Fully Implemented
-const Intervention = require('../models/Intervention');
+const Intervention = require('../../models/phoenix/Intervention');
 
 exports.calculateStats = (interventions) => {
   const stats = {

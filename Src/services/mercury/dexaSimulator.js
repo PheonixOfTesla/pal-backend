@@ -1,9 +1,9 @@
 // dexaSimulator.js
 // Service for simulating DEXA scan results using body measurements and wearable data
 
-const BodyComposition = require('../models/BodyComposition');
-const BiometricSnapshot = require('../models/BiometricSnapshot');
-const User = require('../models/User');
+const BodyComposition = require('../../models/mercury/BodyComposition');
+const BiometricSnapshot = require('../../models/mercury/BiometricSnapshot');
+const User = require('../../models/User');
 
 /**
  * Generate a simulated DEXA scan based on available user data

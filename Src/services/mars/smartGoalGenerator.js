@@ -8,8 +8,8 @@
  * Provides personalized goal suggestions and templates
  */
 
-const User = require('../models/User');
-const Goal = require('../models/Goal');
+const User = require('../../models/User');
+const Goal = require('../../models/mars/Goal');
 // const aiService = require('../aiService'); // Your Gemini AI service
 
 /**

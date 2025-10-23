@@ -1,6 +1,6 @@
 // Src/services/mercury/deviceSync.js
-const WearableDevice = require('../models/WearableDevice');
-const WearableData = require('../models/WearableData');
+const WearableDevice = require('../../models/mercury/WearableDevice');
+const WearableData = require('../../models/mercury/WearableData');
 const axios = require('axios');
 const crypto = require('crypto');
 

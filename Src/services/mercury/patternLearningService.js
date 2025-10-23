@@ -1,12 +1,12 @@
 // Src/services/patternLearningService.js - AUTOMATED PATTERN DETECTION
 const cron = require('node-cron');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Goal = require('../models/Goal');
-const Transaction = require('../models/Transaction');
-const CalendarEvent = require('../models/CalenderEvent');
-const User = require('../models/User');
-const CorrelationPattern = require('../models/CorrelationPattern');
+const WearableData = require('../../models/mercury/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Goal = require('../../models/mars/Goal');
+const Transaction = require('../../models/jupiter/Transaction');
+const CalendarEvent = require('../../models/earth/CalendarEvent');
+const User = require('../../models/User');
+const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
 const mlTrainingService = require('./mlTrainingService');
 
 class PatternLearningService {

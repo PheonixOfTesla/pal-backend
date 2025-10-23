@@ -6,8 +6,8 @@
 // ========================================
 
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
-const Finance = require('../models/Finance');
-const Transaction = require('../models/Transaction');
+const Finance = require('../../models/jupiter/Finance');
+const Transaction = require('../../models/jupiter/Transaction');
 
 // Plaid Configuration
 const configuration = new Configuration({

@@ -1,12 +1,12 @@
 // Src/services/aiService.js
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Goal = require('../models/Goal');
-const Nutrition = require('../models/Nutrition');
-const Measurement = require('../models/Measurement');
-const CalendarEvent = require('../models/CalenderEvent');
-const CompanionConversation = require('../models/CompanionConversation');
+const WearableData = require('../../models/mercury/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Goal = require('../../models/mars/Goal');
+const Nutrition = require('../../models/venus/Nutrition');
+const Measurement = require('../../models/mercury/Measurement');
+const CalendarEvent = require('../../models/earth/CalendarEvent');
+const CompanionConversation = require('../../models/phoenix/CompanionConversation');
 
 class AIService {
   constructor() {

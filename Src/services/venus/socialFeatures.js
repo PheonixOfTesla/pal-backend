@@ -1,9 +1,9 @@
 // Social Features Service
 // Feed generation, friend management, challenges
 
-const SocialPost = require('../models/SocialPost');
-const Challenge = require('../models/Challenge');
-const Workout = require('../models/Workout');
+const SocialPost = require('../../models/venus/SocialPost');
+const Challenge = require('../../models/venus/Challenge');
+const Workout = require('../../models/venus/Workout');
 
 /**
  * Generate personalized social feed

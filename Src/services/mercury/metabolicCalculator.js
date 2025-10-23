@@ -1,9 +1,9 @@
 // metabolicCalculator.js
 // Service for calculating metabolic rates using multiple formulas
 
-const User = require('../models/User');
-const BiometricSnapshot = require('../models/BiometricSnapshot');
-const BodyComposition = require('../models/BodyComposition');
+const User = require('../../models/User');
+const BiometricSnapshot = require('../../models/mercury/BiometricSnapshot');
+const BodyComposition = require('../../models/mercury/BodyComposition');
 
 /**
  * Calculate metabolic rates for a user
@@ -198,7 +198,7 @@ function calculateAge(dateOfBirth) {
 async function calculateRecommendedCalories(userId, tdee, user) {
   try {
     // Try to get user's goal
-    const Goal = require('../models/Goal');
+    const Goal = require('../../models/mars/Goal');
     const activeGoals = await Goal.find({ 
       userId, 
       status: 'active',

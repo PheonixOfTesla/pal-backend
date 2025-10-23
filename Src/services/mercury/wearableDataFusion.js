@@ -1,6 +1,6 @@
 // Src/services/wearableDataFusion.js - Multi-Device Data Fusion Engine
-const WearableData = require('../models/WearableData');
-const User = require('../models/User');
+const WearableData = require('../../models/mercury/WearableData');
+const User = require('../../models/User');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class WearableDataFusionService {

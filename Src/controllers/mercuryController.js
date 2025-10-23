@@ -3,21 +3,21 @@
 // Total Methods: 38
 // Base Path: /api/mercury
 
-const WearableDevice = require('../models/WearableDevice');
-const WearableData = require('../models/WearableData');
-const HealthMetric = require('../models/HealthMetric');
-const SleepData = require('../models/SleepData');
-const RecoveryScore = require('../models/RecoveryScore');
-const BiometricSnapshot = require('../models/BiometricSnapshot');
-const BodyComposition = require('../models/BodyComposition');
+const WearableDevice = require('../models/mercury/WearableDevice');
+const WearableData = require('../models/mercury/WearableData');
+const HealthMetric = require('../models/mercury/HealthMetric');
+const SleepData = require('../models/mercury/SleepData');
+const RecoveryScore = require('../models/mercury/RecoveryScore');
+const BiometricSnapshot = require('../models/mercury/BiometricSnapshot');
+const BodyComposition = require('../models/mercury/BodyComposition');
 
 // Services
-const deviceSync = require('../services/deviceSync');
-const biometricEngine = require('../services/biometricEngine');
-const recoveryCalc = require('../services/recoveryCalc');
-const dexaSimulator = require('../services/dexaSimulator');
-const metabolicCalculator = require('../services/metabolicCalculator');
-const healthRatios = require('../services/healthRatios');
+const deviceSync = require('../services/mercury/deviceSync');
+const biometricEngine = require('../services/mercury/biometricEngine');
+const recoveryCalc = require('../services/mercury/recoveryCalc');
+const dexaSimulator = require('../services/mercury/dexaSimulator');
+const metabolicCalculator = require('../services/mercury/metabolicCalculator');
+const healthRatios = require('../services/mercury/healthRatios');
 
 // ========================================
 // A. BIOMETRIC ANALYSIS (10 methods)

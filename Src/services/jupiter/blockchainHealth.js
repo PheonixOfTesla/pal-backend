@@ -1,10 +1,10 @@
 // Src/services/blockchainHealth.js - Immutable Health Records on Blockchain
 const crypto = require('crypto');
 const axios = require('axios');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Measurement = require('../models/Measurement');
-const User = require('../models/User');
+const WearableData = require('../../models/mercury/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Measurement = require('../../models/mercury/Measurement');
+const User = require('../../models/User');
 
 class BlockchainHealthService {
   constructor() {

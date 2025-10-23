@@ -1,10 +1,10 @@
 // Src/services/mlTrainingService.js - CONTINUOUS ML MODEL TRAINING
 const tf = require('@tensorflow/tfjs-node');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Goal = require('../models/Goal');
-const Measurement = require('../models/Measurement');
-const Intervention = require('../models/intervention');
+const WearableData = require('../../models/mercury/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Goal = require('../../models/mars/Goal');
+const Measurement = require('../../models/mercury/Measurement');
+const Intervention = require('../../models/phoenix/Intervention');
 const fs = require('fs').promises;
 const path = require('path');
 

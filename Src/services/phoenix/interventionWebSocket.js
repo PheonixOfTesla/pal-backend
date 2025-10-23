@@ -1,7 +1,7 @@
 // Src/services/interventionWebSocket.js
 const WebSocket = require('ws');
-const Intervention = require('../models/intervention');
-const User = require('../models/User');
+const Intervention = require('../../models/phoenix/Intervention');
+const User = require('../../models/User');
 const jwt = require('jsonwebtoken');
 
 class InterventionWebSocketService {

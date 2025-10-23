@@ -1,5 +1,5 @@
 // Phone Agent Service - Twilio Integration Ready
-const ButlerAction = require('../models/ButlerAction');
+const ButlerAction = require('../../models/ButlerAction');
 
 exports.initiateCall = async (data) => {
   const call = await ButlerAction.create({

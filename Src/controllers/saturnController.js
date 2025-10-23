@@ -8,8 +8,8 @@
  * Service: legacyService.js
  */
 
-const LegacyVision = require('../models/LegacyVision');
-const QuarterlyReview = require('../models/QuarterlyReview');
+const LegacyVision = require('../models/saturn/LegacyVision');
+const QuarterlyReview = require('../models/saturn/QuarterlyReview');
 const legacyService = require('../services/saturn/legacyService');
 
 // ========================================

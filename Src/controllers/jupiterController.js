@@ -7,9 +7,9 @@
 // Status: ✅ COMPLETE (16 methods)
 // ========================================
 
-const Finance = require('../models/Finance');
-const Budget = require('../models/Budget');
-const Transaction = require('../models/Transaction');
+const Finance = require('../models/jupiter/Finance');
+const Budget = require('../models/jupiter/Budget');
+const Transaction = require('../models/jupiter/Transaction');
 const plaidService = require('../services/jupiter/plaidService');
 const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
@@ -798,7 +798,7 @@ exports.getStressCorrelation = asyncHandler(async (req, res, next) => {
   }).sort('date');
 
   // Get recovery scores from Mercury
-  const RecoveryScore = require('../models/RecoveryScore');
+  const RecoveryScore = require('../models/mercury/RecoveryScore');
   const recoveryScores = await RecoveryScore.find({
     userId,
     date: { $gte: ninetyDaysAgo }

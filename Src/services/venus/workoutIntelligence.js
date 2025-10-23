@@ -1,9 +1,9 @@
 // Workout Intelligence Service
 // AI-powered workout recommendations, form analysis, and periodization
 
-const Workout = require('../models/Workout');
-const Exercise = require('../models/Exercise');
-const WearableData = require('../models/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Exercise = require('../../models/venus/Exercise');
+const WearableData = require('../../models/mercury/WearableData');
 
 /**
  * Generate workout recommendations based on user preferences and goals

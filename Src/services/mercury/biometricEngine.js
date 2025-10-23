@@ -1,8 +1,8 @@
 // Src/services/mercury/biometricEngine.js
-const WearableData = require('../models/WearableData');
-const SleepData = require('../models/SleepData');
-const BodyComposition = require('../models/BodyComposition');
-const HealthMetric = require('../models/HealthMetric');
+const WearableData = require('../../models/mercury/WearableData');
+const SleepData = require('../../models/mercury/SleepData');
+const BodyComposition = require('../../models/mercury/BodyComposition');
+const HealthMetric = require('../../models/mercury/HealthMetric');
 const dexaSimulator = require('./dexaSimulator');
 const metabolicCalculator = require('./metabolicCalculator');
 const healthRatios = require('./healthRatios');
@@ -831,7 +831,7 @@ class BiometricEngine {
   // Helper methods
 
   async getUserData(userId) {
-    const User = require('../models/User');
+    const User = require('../../models/User');
     return await User.findById(userId).lean();
   }
 

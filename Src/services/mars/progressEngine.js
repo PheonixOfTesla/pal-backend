@@ -1,8 +1,8 @@
 // Progress Engine Service
 // Body composition analysis, recomp tracking, symmetry analysis
 
-const Measurement = require('../models/Measurement');
-const Workout = require('../models/Workout');
+const Measurement = require('../../models/mercury/Measurement');
+const Workout = require('../../models/venus/Workout');
 
 /**
  * Analyze body composition with predictions

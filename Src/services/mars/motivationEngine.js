@@ -7,8 +7,8 @@
  * Generates personalized motivational messages and interventions
  */
 
-const Goal = require('../models/Goal');
-const User = require('../models/User');
+const Goal = require('../../models/mars/Goal');
+const User = require('../../models/User');
 
 /**
  * Generate celebration message when goal is completed

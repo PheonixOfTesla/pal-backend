@@ -24,7 +24,7 @@
  */
 
 const asyncHandler = require('express-async-handler');
-const Goal = require('../models/Goal');
+const Goal = require('../models/mars/Goal');
 // Note: Habits and Milestones are embedded in Goal model
 // Services may need to be created if they don't exist yet
 const goalTracker = require('../services/mars/goalTracker');

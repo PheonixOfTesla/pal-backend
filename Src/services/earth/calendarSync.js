@@ -7,7 +7,7 @@
 // ================================================================
 
 const axios = require('axios');
-const CalendarEvent = require('../models/CalendarEvent');
+const CalendarEvent = require('../../models/earth/CalendarEvent');
 const { google } = require('googleapis');
 const crypto = require('crypto');
 

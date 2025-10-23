@@ -1,8 +1,8 @@
 // Src/services/mercury/recoveryCalc.js
-const RecoveryScore = require('../models/RecoveryScore');
-const WearableData = require('../models/WearableData');
-const SleepData = require('../models/SleepData');
-const Workout = require('../models/Workout');
+const RecoveryScore = require('../../models/mercury/RecoveryScore');
+const WearableData = require('../../models/mercury/WearableData');
+const SleepData = require('../../models/mercury/SleepData');
+const Workout = require('../../models/venus/Workout');
 
 class RecoveryCalculator {
   /**

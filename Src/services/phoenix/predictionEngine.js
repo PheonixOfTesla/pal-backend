@@ -4,12 +4,12 @@
 // ML-based predictions with real algorithms
 // ============================================
 
-const Prediction = require('../models/Prediction');
-const WearableData = require('../models/WearableData');
-const RecoveryScore = require('../models/RecoveryScore');
-const Workout = require('../models/Workout');
-const Goal = require('../models/Goal');
-const BodyMeasurement = require('../models/BodyMeasurement');
+const Prediction = require('../../models/phoenix/Prediction');
+const WearableData = require('../../models/mercury/WearableData');
+const RecoveryScore = require('../../models/mercury/RecoveryScore');
+const Workout = require('../../models/venus/Workout');
+const Goal = require('../../models/mars/Goal');
+const BodyMeasurement = require('../../models/BodyMeasurement');
 
 /**
  * Generate prediction using historical data and algorithms

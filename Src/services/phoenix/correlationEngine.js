@@ -4,13 +4,13 @@
 // Complete pattern discovery with statistical analysis
 // ============================================
 
-const CorrelationPattern = require('../models/CorrelationPattern');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Transaction = require('../models/Transaction');
-const CalendarEvent = require('../models/CalendarEvent');
-const RecoveryScore = require('../models/RecoveryScore');
-const Goal = require('../models/Goal');
+const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+const WearableData = require('../../models/mercury/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Transaction = require('../../models/jupiter/Transaction');
+const CalendarEvent = require('../../models/earth/CalendarEvent');
+const RecoveryScore = require('../../models/mercury/RecoveryScore');
+const Goal = require('../../models/mars/Goal');
 
 /**
  * Analyze user for correlation patterns

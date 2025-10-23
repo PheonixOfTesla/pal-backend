@@ -1,5 +1,5 @@
 // Real-time Monitor Service - WebSocket Ready
-const CorrelationPattern = require('../models/CorrelationPattern');
+const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
 
 exports.getCurrentPatterns = async (userId) => {
   const activePatterns = await CorrelationPattern.find({

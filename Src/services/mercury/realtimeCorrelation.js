@@ -1,10 +1,10 @@
 // Src/services/realtimeCorrelation.js
 const WebSocket = require('ws');
-const CorrelationPattern = require('../models/CorrelationPattern');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Transaction = require('../models/Transaction');
-const CalendarEvent = require('../models/CalenderEvent');
+const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+const WearableData = require('../../models/mercury/WearableData');
+const Workout = require('../../models/venus/Workout');
+const Transaction = require('../../models/jupiter/Transaction');
+const CalendarEvent = require('../../models/earth/CalendarEvent');
 
 class RealtimeCorrelationService {
   constructor(wss) {

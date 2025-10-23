@@ -1,8 +1,8 @@
 // Src/services/quantumWorkouts.js - Quantum-Randomized Training for Plateau Prevention
 const crypto = require('crypto');
-const Exercise = require('../models/Exercise');
-const Workout = require('../models/Workout');
-const WearableData = require('../models/WearableData');
+const Exercise = require('../../models/venus/Exercise');
+const Workout = require('../../models/venus/Workout');
+const WearableData = require('../../models/mercury/WearableData');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 class QuantumWorkoutService {
