@@ -1,9 +1,9 @@
 // metabolicCalculator.js
 // Service for calculating metabolic rates using multiple formulas
 
-const User = require('../../models/User');
-const BiometricSnapshot = require('../../models/BiometricSnapshot');
-const BodyComposition = require('../../models/BodyComposition');
+const User = require('../models/User');
+const BiometricSnapshot = require('../models/BiometricSnapshot');
+const BodyComposition = require('../models/BodyComposition');
 
 /**
  * Calculate metabolic rates for a user
