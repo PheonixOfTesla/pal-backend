@@ -1,9 +1,9 @@
 // healthRatios.js
 // Service for calculating health ratios: ABSI, BRI, WHR, waist-to-height ratio
 
-const User = require('../../models/User');
-const BiometricSnapshot = require('../../models/BiometricSnapshot');
-const BodyComposition = require('../../models/BodyComposition');
+const User = require('../models/User');
+const BiometricSnapshot = require('../models/BiometricSnapshot');
+const BodyComposition = require('../models/BodyComposition');
 
 /**
  * Calculate all health ratios for a user
