@@ -12,12 +12,12 @@ const BiometricSnapshot = require('../models/BiometricSnapshot');
 const BodyComposition = require('../models/BodyComposition');
 
 // Services
-const deviceSync = require('../services/mercury/deviceSync');
-const biometricEngine = require('../services/mercury/biometricEngine');
-const recoveryCalc = require('../services/mercury/recoveryCalc');
-const dexaSimulator = require('../services/mercury/dexaSimulator');
-const metabolicCalculator = require('../services/mercury/metabolicCalculator');
-const healthRatios = require('../services/mercury/healthRatios');
+const deviceSync = require('../services/deviceSync');
+const biometricEngine = require('../services/biometricEngine');
+const recoveryCalc = require('../services/recoveryCalc');
+const dexaSimulator = require('../services//dexaSimulator');
+const metabolicCalculator = require('../services/metabolicCalculator');
+const healthRatios = require('../services/healthRatios');
 
 // ========================================
 // A. BIOMETRIC ANALYSIS (10 methods)
