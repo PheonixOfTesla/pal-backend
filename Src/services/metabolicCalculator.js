@@ -198,7 +198,7 @@ function calculateAge(dateOfBirth) {
 async function calculateRecommendedCalories(userId, tdee, user) {
   try {
     // Try to get user's goal
-    const Goal = require('../../models/Goal');
+    const Goal = require('../models/Goal');
     const activeGoals = await Goal.find({ 
       userId, 
       status: 'active',

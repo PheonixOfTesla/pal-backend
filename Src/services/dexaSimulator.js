@@ -3,7 +3,7 @@
 
 const BodyComposition = require('../models/BodyComposition');
 const BiometricSnapshot = require('../models/BiometricSnapshot');
-const User = require('../../models/User');
+const User = require('../models/User');
 
 /**
  * Generate a simulated DEXA scan based on available user data

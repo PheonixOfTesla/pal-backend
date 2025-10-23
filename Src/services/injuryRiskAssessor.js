@@ -1,9 +1,9 @@
 // Injury Risk Assessor Service
 // Analyze injury risk factors and provide prevention recommendations
 
-const Workout = require('../../models/Workout');
-const InjuryLog = require('../../models/InjuryLog');
-const WearableData = require('../../models/WearableData');
+const Workout = require('../models/Workout');
+const InjuryLog = require('../models/InjuryLog');
+const WearableData = require('../models/WearableData');
 
 /**
  * Assess overall injury risk

@@ -1,6 +1,6 @@
 // ML Training Orchestrator - TensorFlow.js Ready
-const MLModel = require('../../models/MLModel');
-const BehaviorPattern = require('../../models/BehaviorPattern');
+const MLModel = require('../models/MLModel');
+const BehaviorPattern = require('../models/BehaviorPattern');
 
 exports.startTraining = async (userId, modelType, config) => {
   const trainingJob = await MLModel.create({

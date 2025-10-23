@@ -831,7 +831,7 @@ class BiometricEngine {
   // Helper methods
 
   async getUserData(userId) {
-    const User = require('../../models/User');
+    const User = require('../models/User');
     return await User.findById(userId).lean();
   }
 

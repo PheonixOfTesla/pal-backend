@@ -7,7 +7,7 @@
  * Handles goal progress calculations, trends, velocity, and bottleneck analysis
  */
 
-const Goal = require('../../models/Goal');
+const Goal = require('../models/Goal');
 
 /**
  * Generate milestones for a goal

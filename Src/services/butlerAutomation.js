@@ -1,5 +1,5 @@
 // Butler Automation Service - Fully Implemented
-const ButlerAction = require('../../models/ButlerAction');
+const ButlerAction = require('../models/ButlerAction');
 
 exports.makeReservation = async (data) => {
   const reservation = await ButlerAction.create({

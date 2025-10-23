@@ -1,5 +1,5 @@
-const CalendarEvent = require('../../models/CalendarEvent');
-const EnergyPattern = require('../../models/EnergyPattern');
+const CalendarEvent = require('../models/CalendarEvent');
+const EnergyPattern = require('../models/EnergyPattern');
 
 function getOptimalEnergyForEventType(eventType) {
   const energyRequirements = {

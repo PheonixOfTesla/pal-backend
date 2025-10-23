@@ -5,8 +5,8 @@
  * Saturn System
  */
 
-const LegacyVision = require('../../models/LegacyVision');
-const QuarterlyReview = require('../../models/QuarterlyReview');
+const LegacyVision = require('../models/LegacyVision');
+const QuarterlyReview = require('../models/QuarterlyReview');
 
 /**
  * Get motivational message based on days remaining

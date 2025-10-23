@@ -5,14 +5,14 @@
 // ============================================
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const WearableData = require('../../models/WearableData');
-const Workout = require('../../models/Workout');
-const Goal = require('../../models/Goal');
-const RecoveryScore = require('../../models/RecoveryScore');
-const CorrelationPattern = require('../../models/CorrelationPattern');
-const CalendarEvent = require('../../models/CalendarEvent');
-const Transaction = require('../../models/Transaction');
-const Budget = require('../../models/Budget');
+const WearableData = require('../models/WearableData');
+const Workout = require('../models/Workout');
+const Goal = require('../models/Goal');
+const RecoveryScore = require('../models/RecoveryScore');
+const CorrelationPattern = require('../models/CorrelationPattern');
+const CalendarEvent = require('../models/CalendarEvent');
+const Transaction = require('../models/Transaction');
+const Budget = require('../models/Budget');
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'dummy_key');
