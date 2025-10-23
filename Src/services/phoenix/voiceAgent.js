@@ -1,5 +1,5 @@
 // Voice Agent Service - Fully Implemented
-const VoiceSession = require('../../models/VoiceSession');
+const VoiceSession = require('../../models/phoenix/VoiceSession');
 
 exports.createSession = async (userId) => {
   const session = await VoiceSession.create({

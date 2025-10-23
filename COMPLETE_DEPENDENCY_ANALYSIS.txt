@@ -1,0 +1,685 @@
+🔍 PHOENIX BACKEND - COMPLETE DEPENDENCY ANALYSIS
+Generated: Thu Oct 23 15:29:11 EDT 2025
+============================================
+
+📊 CONTROLLER ANALYSIS
+============================================
+
+📄 authController.js
+   Location: Src/controllers/authController.js
+   IMPORTS:
+      2:const User = require('../models/User');
+      3:const bcrypt = require('bcryptjs');
+      4:const jwt = require('jsonwebtoken');
+      5:const crypto = require('crypto');
+
+📄 earthController.js
+   Location: Src/controllers/earthController.js
+   IMPORTS:
+      1:const CalendarEvent = require('../models/earth/CalendarEvent');
+      2:const EnergyPattern = require('../models/earth/EnergyPattern');
+      3:const calendarSync = require('../services/earth/calendarSync');
+      4:const energyOptimizer = require('../services/earth/energyOptimizer');
+
+📄 jupiterController.js
+   Location: Src/controllers/jupiterController.js
+   IMPORTS:
+      10:const Finance = require('../models/jupiter/Finance');
+      11:const Budget = require('../models/jupiter/Budget');
+      12:const Transaction = require('../models/jupiter/Transaction');
+      13:const plaidService = require('../services/jupiter/plaidService');
+      14:const asyncHandler = require('../middleware/asyncHandler');
+      15:const ErrorResponse = require('../utils/errorResponse');
+      801:  const RecoveryScore = require('../models/mercury/RecoveryScore');
+
+📄 marsController.js
+   Location: Src/controllers/marsController.js
+   IMPORTS:
+      26:const asyncHandler = require('express-async-handler');
+      27:const Goal = require('../models/mars/Goal');
+      30:const goalTracker = require('../services/mars/goalTracker');
+      31:const smartGoalGenerator = require('../services/mars/smartGoalGenerator');
+      32:const motivationEngine = require('../services/mars/motivationEngine');
+      484:  const predictionEngine = require('../services/phoenix/predictionEngine');
+
+📄 mercuryController.js
+   Location: Src/controllers/mercuryController.js
+   IMPORTS:
+      6:const WearableDevice = require('../models/mercury/WearableDevice');
+      7:const WearableData = require('../models/mercury/WearableData');
+      8:const HealthMetric = require('../models/mercury/HealthMetric');
+      9:const SleepData = require('../models/mercury/SleepData');
+      10:const RecoveryScore = require('../models/mercury/RecoveryScore');
+      11:const BiometricSnapshot = require('../models/mercury/BiometricSnapshot');
+      12:const BodyComposition = require('../models/mercury/BodyComposition');
+      15:const deviceSync = require('../services/mercury/deviceSync');
+      16:const biometricEngine = require('../services/mercury/biometricEngine');
+      17:const recoveryCalc = require('../services/mercury/recoveryCalc');
+      18:const dexaSimulator = require('../services/mercury/dexaSimulator');
+      19:const metabolicCalculator = require('../services/mercury/metabolicCalculator');
+      20:const healthRatios = require('../services/mercury/healthRatios');
+
+📄 phoenixController.js
+   Location: Src/controllers/phoenixController.js
+   IMPORTS:
+      9:const CompanionConversation = require('../models/phoenix/CompanionConversation');
+      10:const CorrelationPattern = require('../models/phoenix/CorrelationPattern');
+      11:const Prediction = require('../models/phoenix/Prediction');
+      12:const Intervention = require('../models/phoenix/Intervention');
+      13:const BehaviorPattern = require('../models/phoenix/BehaviorPattern');
+      14:const User = require('../models/User');
+      17:const companionAI = require('../services/phoenix/companionAI');
+      18:const correlationEngine = require('../services/phoenix/correlationEngine');
+      19:const predictionEngine = require('../services/phoenix/predictionEngine');
+      20:const interventionEngine = require('../services/phoenix/interventionEngine');
+      21:const voiceAgent = require('../services/phoenix/voiceAgent');
+      22:const butlerAutomation = require('../services/phoenix/butlerAutomation');
+      23:const phoneAgent = require('../services/phoenix/phoneAgent');
+      24:const emailAgent = require('../services/phoenix/emailAgent');
+      25:const realtimeMonitor = require('../services/phoenix/realtimeMonitor');
+      26:const mlTrainingOrchestrator = require('../services/phoenix/mlTrainingOrchestrator');
+
+📄 saturnController.js
+   Location: Src/controllers/saturnController.js
+   IMPORTS:
+      11:const LegacyVision = require('../models/saturn/LegacyVision');
+      12:const QuarterlyReview = require('../models/saturn/QuarterlyReview');
+      13:const legacyService = require('../services/saturn/legacyService');
+
+📄 subscriptionController.js
+   Location: Src/controllers/subscriptionController.js
+   IMPORTS:
+      2:const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      3:const Subscription = require('../models/Subscription');
+      4:const User = require('../models/User');
+
+📄 userController.js
+   Location: Src/controllers/userController.js
+   IMPORTS:
+      2:const User = require('../models/User');
+      3:const bcrypt = require('bcryptjs');
+
+📄 venusController.js
+   Location: Src/controllers/venusController.js
+   IMPORTS:
+
+
+============================================
+📊 SERVICE ANALYSIS (BY PLANET)
+============================================
+
+🪐 earth SERVICES
+-------------------------------------------
+
+   📄 calendarSync.js
+      Location: Src/services/earth/calendarSync.js
+      IMPORTS:
+      → Models:
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+      → Services:
+
+
+   📄 energyOptimizer.js
+      Location: Src/services/earth/energyOptimizer.js
+      IMPORTS:
+      → Models:
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+         const EnergyPattern = require('../../models/earth/EnergyPattern');
+      → Services:
+
+
+🪐 jupiter SERVICES
+-------------------------------------------
+
+   📄 blockchainHealth.js
+      Location: Src/services/jupiter/blockchainHealth.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Measurement = require('../../models/mercury/Measurement');
+         const User = require('../../models/User');
+      → Services:
+
+
+   📄 plaidService.js
+      Location: Src/services/jupiter/plaidService.js
+      IMPORTS:
+      → Models:
+         const Finance = require('../../models/jupiter/Finance');
+         const Transaction = require('../../models/jupiter/Transaction');
+      → Services:
+
+
+🪐 mars SERVICES
+-------------------------------------------
+
+   📄 goalTracker.js
+      Location: Src/services/mars/goalTracker.js
+      IMPORTS:
+      → Models:
+         const Goal = require('../../models/mars/Goal');
+      → Services:
+
+
+   📄 motivationEngine.js
+      Location: Src/services/mars/motivationEngine.js
+      IMPORTS:
+      → Models:
+         const Goal = require('../../models/mars/Goal');
+         const User = require('../../models/User');
+      → Services:
+
+
+   📄 progressEngine.js
+      Location: Src/services/mars/progressEngine.js
+      IMPORTS:
+      → Models:
+         const Measurement = require('../../models/mercury/Measurement');
+         const Workout = require('../../models/venus/Workout');
+      → Services:
+
+
+   📄 smartGoalGenerator.js
+      Location: Src/services/mars/smartGoalGenerator.js
+      IMPORTS:
+      → Models:
+         const User = require('../../models/User');
+         const Goal = require('../../models/mars/Goal');
+      → Services:
+
+
+🪐 mercury SERVICES
+-------------------------------------------
+
+   📄 biometricEngine.js
+      Location: Src/services/mercury/biometricEngine.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const SleepData = require('../../models/mercury/SleepData');
+         const BodyComposition = require('../../models/mercury/BodyComposition');
+         const HealthMetric = require('../../models/mercury/HealthMetric');
+         const User = require('../../models/User');
+      → Services:
+
+
+   📄 deviceSync.js
+      Location: Src/services/mercury/deviceSync.js
+      IMPORTS:
+      → Models:
+         const WearableDevice = require('../../models/mercury/WearableDevice');
+         const WearableData = require('../../models/mercury/WearableData');
+      → Services:
+
+
+   📄 dexaSimulator.js
+      Location: Src/services/mercury/dexaSimulator.js
+      IMPORTS:
+      → Models:
+         const BodyComposition = require('../../models/mercury/BodyComposition');
+         const BiometricSnapshot = require('../../models/mercury/BiometricSnapshot');
+         const User = require('../../models/User');
+      → Services:
+
+
+   📄 healthRatios.js
+      Location: Src/services/mercury/healthRatios.js
+      IMPORTS:
+      → Models:
+         const User = require('../../models/User');
+         const BiometricSnapshot = require('../../models/mercury/BiometricSnapshot');
+         const BodyComposition = require('../../models/mercury/BodyComposition');
+      → Services:
+
+
+   📄 metabolicCalculator.js
+      Location: Src/services/mercury/metabolicCalculator.js
+      IMPORTS:
+      → Models:
+         const User = require('../../models/User');
+         const BiometricSnapshot = require('../../models/mercury/BiometricSnapshot');
+         const BodyComposition = require('../../models/mercury/BodyComposition');
+         const Goal = require('../../models/mars/Goal');
+      → Services:
+
+
+   📄 patternLearningService.js
+      Location: Src/services/mercury/patternLearningService.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Goal = require('../../models/mars/Goal');
+         const Transaction = require('../../models/jupiter/Transaction');
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+         const User = require('../../models/User');
+         const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+      → Services:
+
+
+   📄 realtimeCorrelation.js
+      Location: Src/services/mercury/realtimeCorrelation.js
+      IMPORTS:
+      → Models:
+         const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Transaction = require('../../models/jupiter/Transaction');
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+      → Services:
+
+
+   📄 recoveryCalc.js
+      Location: Src/services/mercury/recoveryCalc.js
+      IMPORTS:
+      → Models:
+         const RecoveryScore = require('../../models/mercury/RecoveryScore');
+         const WearableData = require('../../models/mercury/WearableData');
+         const SleepData = require('../../models/mercury/SleepData');
+         const Workout = require('../../models/venus/Workout');
+      → Services:
+
+
+   📄 wearableDataFusion.js
+      Location: Src/services/mercury/wearableDataFusion.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const User = require('../../models/User');
+      → Services:
+
+
+🪐 phoenix SERVICES
+-------------------------------------------
+
+   📄 aiService.js
+      Location: Src/services/phoenix/aiService.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Goal = require('../../models/mars/Goal');
+         const Nutrition = require('../../models/venus/Nutrition');
+         const Measurement = require('../../models/mercury/Measurement');
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+         const CompanionConversation = require('../../models/phoenix/CompanionConversation');
+      → Services:
+
+
+   📄 butlerAutomation.js
+      Location: Src/services/phoenix/butlerAutomation.js
+      IMPORTS:
+      → Models:
+         const ButlerAction = require('../../models/ButlerAction');
+      → Services:
+
+
+   📄 companionAI.js
+      Location: Src/services/phoenix/companionAI.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Goal = require('../../models/mars/Goal');
+         const RecoveryScore = require('../../models/mercury/RecoveryScore');
+         const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+         const Transaction = require('../../models/jupiter/Transaction');
+         const Budget = require('../../models/jupiter/Budget');
+      → Services:
+
+
+   📄 correlationEngine.js
+      Location: Src/services/phoenix/correlationEngine.js
+      IMPORTS:
+      → Models:
+         const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Transaction = require('../../models/jupiter/Transaction');
+         const CalendarEvent = require('../../models/earth/CalendarEvent');
+         const RecoveryScore = require('../../models/mercury/RecoveryScore');
+         const Goal = require('../../models/mars/Goal');
+      → Services:
+
+
+   📄 emailAgent.js
+      Location: Src/services/phoenix/emailAgent.js
+      IMPORTS:
+      → Models:
+         const ButlerAction = require('../../models/ButlerAction');
+      → Services:
+
+
+   📄 interventionEngine.js
+      Location: Src/services/phoenix/interventionEngine.js
+      IMPORTS:
+      → Models:
+         const Intervention = require('../../models/phoenix/Intervention');
+      → Services:
+
+
+   📄 interventionWebSocket.js
+      Location: Src/services/phoenix/interventionWebSocket.js
+      IMPORTS:
+      → Models:
+         const Intervention = require('../../models/phoenix/Intervention');
+         const User = require('../../models/User');
+      → Services:
+
+
+   📄 mlTrainingOrchestrator.js
+      Location: Src/services/phoenix/mlTrainingOrchestrator.js
+      IMPORTS:
+      → Models:
+         const MLModel = require('../../models/MLModel');
+         const BehaviorPattern = require('../../models/BehaviorPattern');
+      → Services:
+
+
+   📄 mlTrainingService.js
+      Location: Src/services/phoenix/mlTrainingService.js
+      IMPORTS:
+      → Models:
+         const WearableData = require('../../models/mercury/WearableData');
+         const Workout = require('../../models/venus/Workout');
+         const Goal = require('../../models/mars/Goal');
+         const Measurement = require('../../models/mercury/Measurement');
+         const Intervention = require('../../models/phoenix/Intervention');
+      → Services:
+
+
+   📄 phoneAgent.js
+      Location: Src/services/phoenix/phoneAgent.js
+      IMPORTS:
+      → Models:
+         const ButlerAction = require('../../models/ButlerAction');
+      → Services:
+
+
+   📄 predictionEngine.js
+      Location: Src/services/phoenix/predictionEngine.js
+      IMPORTS:
+      → Models:
+         const Prediction = require('../../models/phoenix/Prediction');
+         const WearableData = require('../../models/mercury/WearableData');
+         const RecoveryScore = require('../../models/mercury/RecoveryScore');
+         const Workout = require('../../models/venus/Workout');
+         const Goal = require('../../models/mars/Goal');
+         const BodyMeasurement = require('../../models/BodyMeasurement');
+      → Services:
+
+
+   📄 realtimeMonitor.js
+      Location: Src/services/phoenix/realtimeMonitor.js
+      IMPORTS:
+      → Models:
+         const CorrelationPattern = require('../../models/phoenix/CorrelationPattern');
+      → Services:
+
+
+   📄 realtimeVoiceService.js
+      Location: Src/services/phoenix/realtimeVoiceService.js
+      IMPORTS:
+      → Models:
+      → Services:
+
+
+   📄 voiceAgent.js
+      Location: Src/services/phoenix/voiceAgent.js
+      IMPORTS:
+      → Models:
+         const VoiceSession = require('../../models/VoiceSession');
+      → Services:
+
+
+🪐 saturn SERVICES
+-------------------------------------------
+
+   📄 legacyService.js
+      Location: Src/services/saturn/legacyService.js
+      IMPORTS:
+      → Models:
+         const LegacyVision = require('../../models/saturn/LegacyVision');
+         const QuarterlyReview = require('../../models/saturn/QuarterlyReview');
+      → Services:
+
+
+🪐 venus SERVICES
+-------------------------------------------
+
+   📄 injuryRiskAssessor.js
+      Location: Src/services/venus/injuryRiskAssessor.js
+      IMPORTS:
+      → Models:
+         const Workout = require('../../models/venus/Workout');
+         const InjuryLog = require('../../models/venus/InjuryLog');
+         const WearableData = require('../../models/mercury/WearableData');
+      → Services:
+
+
+   📄 mealPlanningAI.js
+      Location: Src/services/venus/mealPlanningAI.js
+      IMPORTS:
+      → Models:
+      → Services:
+
+
+   📄 nutritionCalc.js
+      Location: Src/services/venus/nutritionCalc.js
+      IMPORTS:
+      → Models:
+      → Services:
+
+
+   📄 quantumWorkouts.js
+      Location: Src/services/venus/quantumWorkouts.js
+      IMPORTS:
+      → Models:
+         const Exercise = require('../../models/venus/Exercise');
+         const Workout = require('../../models/venus/Workout');
+         const WearableData = require('../../models/mercury/WearableData');
+      → Services:
+
+
+   📄 socialFeatures.js
+      Location: Src/services/venus/socialFeatures.js
+      IMPORTS:
+      → Models:
+         const SocialPost = require('../../models/venus/SocialPost');
+         const Challenge = require('../../models/venus/Challenge');
+         const Workout = require('../../models/venus/Workout');
+      → Services:
+
+
+   📄 workoutIntelligence.js
+      Location: Src/services/venus/workoutIntelligence.js
+      IMPORTS:
+      → Models:
+         const Workout = require('../../models/venus/Workout');
+         const Exercise = require('../../models/venus/Exercise');
+         const WearableData = require('../../models/mercury/WearableData');
+      → Services:
+
+
+
+============================================
+📊 ROUTE ANALYSIS
+============================================
+
+📄 auth.js
+   Location: Src/routes/auth.js
+   IMPORTS:
+      2:const express = require('express');
+      4:const { protect } = require('../middleware/auth');
+      5:const authController = require('../controllers/authController');
+
+📄 earth.js
+   Location: Src/routes/earth.js
+   IMPORTS:
+      1:const express = require('express');
+      3:const earthController = require('../controllers/earthController');
+      4:const { protect } = require('../middleware/auth');
+
+📄 jupiter.js
+   Location: Src/routes/jupiter.js
+   IMPORTS:
+      10:const express = require('express');
+      12:const jupiterController = require('../controllers/jupiterController');
+      13:const { protect } = require('../middleware/auth');
+
+📄 mars.js
+   Location: Src/routes/mars.js
+   IMPORTS:
+      13:const express = require('express');
+      15:const marsController = require('../controllers/marsController');
+      16:const { protect } = require('../middleware/auth');
+
+📄 mercury.js
+   Location: Src/routes/mercury.js
+   IMPORTS:
+      6:const express = require('express');
+      8:const mercuryController = require('../controllers/mercuryController');
+      9:const { protect } = require('../middleware/auth');
+
+📄 phoenix.js
+   Location: Src/routes/phoenix.js
+   IMPORTS:
+      9:const express = require('express');
+      11:const phoenixController = require('../controllers/phoenixController');
+      12:const { protect } = require('../middleware/auth');
+
+📄 saturn.js
+   Location: Src/routes/saturn.js
+   IMPORTS:
+      10:const express = require('express');
+      12:const saturnController = require('../controllers/saturnController');
+      13:const { protect } = require('../middleware/auth');
+
+📄 subscription 2.js
+   Location: Src/routes/subscription 2.js
+   IMPORTS:
+      2:const express = require('express');
+      4:const { protect } = require('../middleware/auth');
+      5:const subscriptionController = require('../controllers/subscriptionController');
+
+📄 subscription.js
+   Location: Src/routes/subscription.js
+   IMPORTS:
+      2:const express = require('express');
+      4:const { protect } = require('../middleware/auth');
+      5:const subscriptionController = require('../controllers/subscriptionController');
+
+📄 user.js
+   Location: Src/routes/user.js
+   IMPORTS:
+      2:const express = require('express');
+      4:const { protect } = require('../middleware/auth');
+      5:const { checkRole } = require('../middleware/roleCheck');
+      6:const userController = require('../controllers/userController');
+
+📄 venus.js
+   Location: Src/routes/venus.js
+   IMPORTS:
+      6:const express = require('express');
+      8:const venusController = require('../controllers/venusController');
+      9:const { protect } = require('../middleware/auth');
+      10:const multer = require('multer');
+
+
+============================================
+❌ MISSING FILES DETECTION
+============================================
+
+Checking for commonly required but missing models...
+
+❌ MISSING: Src/models/phoenix/BodyMeasurement.js
+❌ MISSING: Src/models/phoenix/MLModel.js
+❌ MISSING: Src/models/phoenix/VoiceSession.js
+❌ MISSING: Src/models/phoenix/ButlerAction.js
+
+============================================
+⚠️  INCORRECT IMPORT PATTERNS
+============================================
+
+Checking for imports missing planet subdirectories...
+
+🔍 Services with incorrect imports:
+   ❌ Src/services/mercury/dexaSimulator.js
+      const User = require('../../models/User');
+   ❌ Src/services/mercury/wearableDataFusion.js
+      const User = require('../../models/User');
+   ❌ Src/services/mercury/biometricEngine.js
+      const User = require('../../models/User');
+   ❌ Src/services/mercury/patternLearningService.js
+      const User = require('../../models/User');
+   ❌ Src/services/mercury/healthRatios.js
+      const User = require('../../models/User');
+   ❌ Src/services/mercury/metabolicCalculator.js
+      const User = require('../../models/User');
+   ❌ Src/services/phoenix/emailAgent.js
+      const ButlerAction = require('../../models/ButlerAction');
+   ❌ Src/services/phoenix/voiceAgent.js
+      const VoiceSession = require('../../models/VoiceSession');
+   ❌ Src/services/phoenix/predictionEngine.js
+      const BodyMeasurement = require('../../models/BodyMeasurement');
+   ❌ Src/services/phoenix/mlTrainingOrchestrator.js
+      const MLModel = require('../../models/MLModel');
+      const BehaviorPattern = require('../../models/BehaviorPattern');
+   ❌ Src/services/phoenix/interventionWebSocket.js
+      const User = require('../../models/User');
+   ❌ Src/services/phoenix/phoneAgent.js
+      const ButlerAction = require('../../models/ButlerAction');
+   ❌ Src/services/phoenix/butlerAutomation.js
+      const ButlerAction = require('../../models/ButlerAction');
+   ❌ Src/services/jupiter/blockchainHealth.js
+      const User = require('../../models/User');
+   ❌ Src/services/mars/motivationEngine.js
+      const User = require('../../models/User');
+   ❌ Src/services/mars/smartGoalGenerator.js
+      const User = require('../../models/User');
+
+🔍 Controllers with incorrect imports:
+   ❌ Src/controllers/phoenixController.js
+      const User = require('../models/User');
+   ❌ Src/controllers/subscriptionController.js
+      const Subscription = require('../models/Subscription');
+      const User = require('../models/User');
+   ❌ Src/controllers/userController.js
+      const User = require('../models/User');
+   ❌ Src/controllers/authController.js
+      const User = require('../models/User');
+
+============================================
+📊 SUMMARY STATISTICS
+============================================
+
+Controllers found: 10
+Routes found: 11
+Services found: 38
+Models found: 36
+
+Services by planet:
+   earth: 2
+   jupiter: 2
+   mars: 4
+   mercury: 9
+   phoenix: 14
+   saturn: 1
+   venus: 6
+
+Models by planet:
+   earth: 3
+   jupiter: 5
+   mars: 1
+   mercury: 8
+   phoenix: 6
+   saturn: 2
+   venus: 9
+
+============================================
+✅ ANALYSIS COMPLETE
+============================================
+
+Output saved to: COMPLETE_DEPENDENCY_ANALYSIS.txt

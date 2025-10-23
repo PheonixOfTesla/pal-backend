@@ -10,7 +10,7 @@ const CompanionConversation = require('../models/phoenix/CompanionConversation')
 const CorrelationPattern = require('../models/phoenix/CorrelationPattern');
 const Prediction = require('../models/phoenix/Prediction');
 const Intervention = require('../models/phoenix/Intervention');
-const BehaviorPattern = require('../models/BehaviorPattern');
+const BehaviorPattern = require('../models/phoenix/BehaviorPattern');
 const User = require('../models/User');
 
 // Services

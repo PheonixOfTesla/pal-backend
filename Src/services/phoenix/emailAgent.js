@@ -1,5 +1,5 @@
 // Email Agent Service - Gmail Integration Ready
-const ButlerAction = require('../../models/ButlerAction');
+const ButlerAction = require('../../models/phoenix/ButlerAction');
 
 exports.sendEmail = async (data) => {
   const email = await ButlerAction.create({

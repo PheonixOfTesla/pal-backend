@@ -9,7 +9,7 @@ const WearableData = require('../../models/mercury/WearableData');
 const RecoveryScore = require('../../models/mercury/RecoveryScore');
 const Workout = require('../../models/venus/Workout');
 const Goal = require('../../models/mars/Goal');
-const BodyMeasurement = require('../../models/BodyMeasurement');
+const BodyMeasurement = require('../../models/phoenix/BodyMeasurement');
 
 /**
  * Generate prediction using historical data and algorithms
