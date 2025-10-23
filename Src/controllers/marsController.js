@@ -1,402 +1,744 @@
-// Src/controllers/marsController.js - GOAL ACHIEVEMENT ENGINE ($300K VALUE)
+/**
+ * MARS CONTROLLER - Goals, Habits, Milestones, Progress Tracking
+ * 
+ * Phoenix Backend - Planetary System Architecture
+ * File: Src/controllers/marsController.js
+ * Route: Src/routes/mars.js
+ * Base Path: /api/mars
+ * Total Methods: 18
+ * 
+ * CONSOLIDATES:
+ * - goalController.js (expanded from 10 to 18 methods)
+ * 
+ * MODELS USED:
+ * - Goal
+ * - Habit
+ * - Milestone
+ * - GoalProgress
+ * - MotivationalIntervention
+ * 
+ * SERVICES USED:
+ * - goalTracker.js - Goal management
+ * - smartGoalGenerator.js - AI goal creation
+ * - motivationEngine.js - Motivational features
+ */
+
+const asyncHandler = require('express-async-handler');
 const Goal = require('../models/Goal');
-const WearableData = require('../models/WearableData');
-const Workout = require('../models/Workout');
-const Measurement = require('../models/Measurement');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+// Note: Habits and Milestones are embedded in Goal model
+// Services may need to be created if they don't exist yet
+const goalTracker = require('../services/mars/goalTracker');
+const smartGoalGenerator = require('../services/mars/smartGoalGenerator');
+const motivationEngine = require('../services/mars/motivationEngine');
 
-class MarsController {
-  constructor() {
-    this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
-    this.correlationEngine = null; // Will be injected
+// ========================================
+// A. GOAL MANAGEMENT (6 methods)
+// ========================================
+
+/**
+ * @desc    Create a new goal
+ * @route   POST /api/mars/goals
+ * @access  Private
+ */
+exports.createGoal = asyncHandler(async (req, res) => {
+  const {
+    title,
+    description,
+    category,
+    type,
+    targetValue,
+    currentValue,
+    unit,
+    targetDate,
+    priority,
+    milestones,
+    habits,
+    tags
+  } = req.body;
+
+  // Create goal
+  const goal = await Goal.create({
+    userId: req.user.id,
+    title,
+    description,
+    category,
+    type,
+    targetValue,
+    currentValue: currentValue || 0,
+    unit,
+    startDate: Date.now(),
+    targetDate,
+    priority: priority || 'medium',
+    status: 'active',
+    milestones: milestones || [],
+    habits: habits || [],
+    tags: tags || [],
+    progress: 0
+  });
+
+  // Auto-generate milestones if not provided
+  if (!milestones || milestones.length === 0) {
+    const autoMilestones = await goalTracker.generateMilestones(goal);
+    goal.milestones = autoMilestones;
+    await goal.save();
   }
 
-  // ============================================
-  // AUTOMATED GOAL SETTING
-  // ============================================
+  res.status(201).json({
+    success: true,
+    data: goal,
+    message: 'Goal created successfully'
+  });
+});
+
+/**
+ * @desc    Get all goals for user
+ * @route   GET /api/mars/goals
+ * @access  Private
+ */
+exports.getGoals = asyncHandler(async (req, res) => {
+  const { status, category, type, priority } = req.query;
+
+  // Build query
+  const query = { userId: req.user.id };
   
-  async generateSmartGoals(userId) {
-    try {
-      // Analyze user's current state
-      const [wearableData, workouts, measurements] = await Promise.all([
-        WearableData.find({ userId }).sort('-date').limit(30),
-        Workout.find({ clientId: userId, completed: true }).sort('-completedAt').limit(20),
-        Measurement.find({ clientId: userId }).sort('-date').limit(10)
-      ]);
+  if (status) query.status = status;
+  if (category) query.category = category;
+  if (type) query.type = type;
+  if (priority) query.priority = priority;
 
-      // Calculate baseline metrics
-      const metrics = this.calculateBaselineMetrics(wearableData, workouts, measurements);
-      
-      // AI-powered goal generation
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
-      const prompt = `Generate 5 SMART fitness goals based on:
-        Current fitness: ${JSON.stringify(metrics)}
-        Focus on: progression, achievability, health improvement
-        Return JSON array with: name, target, deadline, category, rationale`;
+  // Fetch goals
+  const goals = await Goal.find(query).sort('-createdAt');
 
-      const result = await model.generateContent(prompt);
-      const suggestedGoals = JSON.parse(result.response.text());
+  // Calculate stats
+  const stats = {
+    total: await Goal.countDocuments({ userId: req.user.id }),
+    active: await Goal.countDocuments({ userId: req.user.id, status: 'active' }),
+    completed: await Goal.countDocuments({ userId: req.user.id, status: 'completed' }),
+    paused: await Goal.countDocuments({ userId: req.user.id, status: 'paused' })
+  };
 
-      // Auto-adjust based on user's achievement history
-      const adjustedGoals = await this.adjustGoalsBasedOnHistory(userId, suggestedGoals);
+  res.status(200).json({
+    success: true,
+    count: goals.length,
+    stats,
+    data: goals
+  });
+});
 
-      return {
-        success: true,
-        goals: adjustedGoals,
-        metrics,
-        confidence: this.calculateConfidenceScore(metrics)
-      };
-    } catch (error) {
-      console.error('Goal generation error:', error);
-      throw error;
-    }
+/**
+ * @desc    Get single goal by ID
+ * @route   GET /api/mars/goals/:id
+ * @access  Private
+ */
+exports.getGoal = asyncHandler(async (req, res) => {
+  const goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
   }
 
-  // ============================================
-  // PROGRESS PREDICTION ALGORITHM
-  // ============================================
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to access this goal');
+  }
+
+  // Get insights using virtual fields and calculations
+  const insights = {
+    daysRemaining: goal.daysRemaining,
+    progressRate: goal.progressRate,
+    milestonesCompleted: goal.milestones.filter(m => m.completed).length,
+    totalMilestones: goal.milestones.length
+  };
+
+  res.status(200).json({
+    success: true,
+    data: {
+      goal,
+      insights
+    }
+  });
+});
+
+/**
+ * @desc    Update goal
+ * @route   PUT /api/mars/goals/:id
+ * @access  Private
+ */
+exports.updateGoal = asyncHandler(async (req, res) => {
+  let goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to update this goal');
+  }
+
+  // Update goal
+  goal = await Goal.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true
+  });
+
+  res.status(200).json({
+    success: true,
+    data: goal
+  });
+});
+
+/**
+ * @desc    Delete goal
+ * @route   DELETE /api/mars/goals/:id
+ * @access  Private
+ */
+exports.deleteGoal = asyncHandler(async (req, res) => {
+  const goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to delete this goal');
+  }
+
+  await goal.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    data: {}
+  });
+});
+
+/**
+ * @desc    Complete goal
+ * @route   POST /api/mars/goals/:id/complete
+ * @access  Private
+ */
+exports.completeGoal = asyncHandler(async (req, res) => {
+  const { reflection, achievements } = req.body;
+
+  const goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to complete this goal');
+  }
+
+  // Mark as completed
+  goal.status = 'completed';
+  goal.progress = 100;
+  goal.currentValue = goal.targetValue;
+  await goal.save();
+
+  // Generate celebration message
+  const celebration = await motivationEngine.generateCelebration(goal);
+
+  res.status(200).json({
+    success: true,
+    data: goal,
+    celebration
+  });
+});
+
+// ========================================
+// B. AI GOAL GENERATION (3 methods)
+// ========================================
+
+/**
+ * @desc    Generate SMART goal from vague input
+ * @route   POST /api/mars/goals/generate-smart
+ * @access  Private
+ */
+exports.generateSmartGoal = asyncHandler(async (req, res) => {
+  const { generalGoal, domain } = req.body;
+
+  if (!generalGoal) {
+    res.status(400);
+    throw new Error('Please provide a general goal');
+  }
+
+  // Use AI to convert to SMART goal
+  const smartGoal = await smartGoalGenerator.generate(req.user.id, {
+    generalGoal,
+    domain
+  });
+
+  res.status(200).json({
+    success: true,
+    data: smartGoal
+  });
+});
+
+/**
+ * @desc    Get personalized goal suggestions
+ * @route   POST /api/mars/goals/suggest
+ * @access  Private
+ */
+exports.getGoalSuggestions = asyncHandler(async (req, res) => {
+  const { domain } = req.body;
+
+  // Generate AI-powered suggestions based on user data
+  const suggestions = await smartGoalGenerator.suggest(req.user.id, domain);
+
+  res.status(200).json({
+    success: true,
+    data: suggestions
+  });
+});
+
+/**
+ * @desc    Get goal templates
+ * @route   GET /api/mars/goals/templates
+ * @access  Private
+ */
+exports.getGoalTemplates = asyncHandler(async (req, res) => {
+  const { category, difficulty } = req.query;
+
+  // Fetch templates
+  const templates = await smartGoalGenerator.getTemplates({
+    category,
+    difficulty
+  });
+
+  res.status(200).json({
+    success: true,
+    count: templates.length,
+    data: templates
+  });
+});
+
+// ========================================
+// C. PROGRESS TRACKING (4 methods)
+// ========================================
+
+/**
+ * @desc    Log progress update
+ * @route   POST /api/mars/goals/:id/progress
+ * @access  Private
+ */
+exports.logProgress = asyncHandler(async (req, res) => {
+  const { value, notes, date } = req.body;
+
+  const goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to update this goal');
+  }
+
+  // Update current value
+  goal.currentValue = value;
   
-  async predictGoalCompletion(goalId) {
-    const goal = await Goal.findById(goalId);
-    if (!goal) throw new Error('Goal not found');
-
-    // Calculate velocity and trajectory
-    const progressHistory = goal.progressHistory || [];
-    const velocity = this.calculateVelocity(progressHistory);
-    const acceleration = this.calculateAcceleration(progressHistory);
-    
-    // Predict completion date
-    const remainingProgress = goal.target - goal.current;
-    const daysToCompletion = remainingProgress / (velocity || 0.1);
-    const predictedDate = new Date(Date.now() + daysToCompletion * 86400000);
-    
-    // Calculate confidence based on consistency
-    const consistency = this.calculateConsistency(progressHistory);
-    const confidence = Math.min(95, consistency * acceleration * 100);
-
-    // Identify risk factors
-    const riskFactors = await this.identifyRiskFactors(goal.clientId, goal);
-
-    return {
-      goalId,
-      currentProgress: goal.current,
-      target: goal.target,
-      velocity: velocity.toFixed(2),
-      predictedCompletionDate: predictedDate,
-      onTrack: predictedDate <= new Date(goal.deadline),
-      confidence: Math.round(confidence),
-      riskFactors,
-      recommendations: this.generateRecommendations(velocity, riskFactors)
-    };
-  }
-
-  // ============================================
-  // MOTIVATIONAL INTERVENTION SYSTEM
-  // ============================================
+  // Calculate percentage complete (handled by pre-save hook in model)
+  const percentComplete = goal.targetValue > 0 
+    ? ((value / goal.targetValue) * 100).toFixed(2) 
+    : 0;
   
-  async triggerMotivationalIntervention(userId) {
-    const activeGoals = await Goal.find({ clientId: userId, completed: false });
-    const interventions = [];
-
-    for (const goal of activeGoals) {
-      const progress = (goal.current / goal.target) * 100;
-      const daysRemaining = Math.ceil((new Date(goal.deadline) - Date.now()) / 86400000);
-      
-      // Check if intervention needed
-      if (progress < 30 && daysRemaining < 30) {
-        interventions.push({
-          type: 'critical',
-          goalId: goal._id,
-          message: `🚨 ${goal.name} needs immediate attention! Only ${daysRemaining} days left.`,
-          action: 'schedule_coaching_session',
-          suggestedActions: [
-            'Break down into daily micro-goals',
-            'Schedule accountability check-ins',
-            'Adjust target if unrealistic'
-          ]
-        });
-      } else if (progress > 70) {
-        interventions.push({
-          type: 'celebration',
-          goalId: goal._id,
-          message: `🎉 You're ${Math.round(progress)}% complete with ${goal.name}!`,
-          action: 'celebrate_milestone',
-          suggestedActions: ['Share achievement', 'Set next challenge']
-        });
-      }
-    }
-
-    // Store interventions and trigger notifications
-    if (interventions.length > 0) {
-      await this.storeInterventions(userId, interventions);
-      this.sendMotivationalNotifications(userId, interventions);
-    }
-
-    return interventions;
-  }
-
-  // ============================================
-  // GOAL-HEALTH CORRELATION
-  // ============================================
+  goal.progress = percentComplete;
   
-  async correlateGoalsWithHealth(userId) {
-    const [goals, wearableData] = await Promise.all([
-      Goal.find({ clientId: userId }),
-      WearableData.find({ userId }).sort('-date').limit(30)
-    ]);
+  // Check if goal is completed (handled by pre-save hook)
+  if (percentComplete >= 100) {
+    goal.status = 'completed';
+  }
 
-    const correlations = [];
-    
-    for (const goal of goals) {
-      // Find health metrics during goal progress periods
-      const progressDates = goal.progressHistory.map(p => p.date);
-      const healthOnProgressDays = wearableData.filter(w => 
-        progressDates.some(d => this.isSameDay(d, w.date))
-      );
+  await goal.save();
 
-      // Calculate correlation coefficients
-      const hrvCorrelation = this.calculateCorrelation(
-        goal.progressHistory.map(p => p.value),
-        healthOnProgressDays.map(h => h.hrv || 0)
-      );
+  // Calculate trend using goalTracker service
+  const trend = await goalTracker.calculateTrend(goal._id);
 
-      const sleepCorrelation = this.calculateCorrelation(
-        goal.progressHistory.map(p => p.value),
-        healthOnProgressDays.map(h => h.sleepDuration || 0)
-      );
-
-      correlations.push({
-        goalName: goal.name,
-        hrvImpact: hrvCorrelation,
-        sleepImpact: sleepCorrelation,
-        insight: this.generateCorrelationInsight(hrvCorrelation, sleepCorrelation)
-      });
+  res.status(200).json({
+    success: true,
+    data: {
+      goal,
+      percentComplete,
+      trend,
+      notes
     }
+  });
+});
 
-    return {
-      correlations,
-      recommendations: this.generateHealthOptimizedSchedule(correlations)
-    };
+/**
+ * @desc    Get progress history
+ * @route   GET /api/mars/goals/:id/progress
+ * @access  Private
+ */
+exports.getProgress = asyncHandler(async (req, res) => {
+  const goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
   }
 
-  // ============================================
-  // HELPER METHODS
-  // ============================================
-
-  calculateBaselineMetrics(wearableData, workouts, measurements) {
-    const avgSteps = wearableData.reduce((sum, d) => sum + (d.steps || 0), 0) / wearableData.length;
-    const workoutFrequency = workouts.length / 30;
-    const currentWeight = measurements[0]?.weight || 0;
-    
-    return {
-      avgDailySteps: Math.round(avgSteps),
-      workoutsPerWeek: (workoutFrequency * 7).toFixed(1),
-      currentWeight,
-      fitnessLevel: this.calculateFitnessLevel(avgSteps, workoutFrequency)
-    };
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to access this goal');
   }
 
-  calculateVelocity(progressHistory) {
-    if (progressHistory.length < 2) return 0;
-    
-    const recentProgress = progressHistory.slice(-5);
-    const firstPoint = recentProgress[0];
-    const lastPoint = recentProgress[recentProgress.length - 1];
-    
-    const progressDelta = lastPoint.value - firstPoint.value;
-    const timeDelta = (new Date(lastPoint.date) - new Date(firstPoint.date)) / 86400000;
-    
-    return timeDelta > 0 ? progressDelta / timeDelta : 0;
-  }
+  // Calculate trend using virtual fields and services
+  const trend = await goalTracker.calculateTrend(goal._id);
 
-  calculateAcceleration(progressHistory) {
-    if (progressHistory.length < 3) return 1;
-    
-    const velocities = [];
-    for (let i = 1; i < progressHistory.length; i++) {
-      const v = this.calculateVelocity(progressHistory.slice(i-1, i+1));
-      velocities.push(v);
+  // Calculate projected completion
+  const projectedCompletion = await goalTracker.projectCompletion(goal._id);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      currentValue: goal.currentValue,
+      targetValue: goal.targetValue,
+      progress: goal.progress,
+      status: goal.status,
+      daysRemaining: goal.daysRemaining,
+      progressRate: goal.progressRate,
+      trend,
+      projectedCompletion
     }
-    
-    const avgVelocity = velocities.reduce((a, b) => a + b, 0) / velocities.length;
-    const recentVelocity = velocities[velocities.length - 1] || 0;
-    
-    return recentVelocity / (avgVelocity || 1);
+  });
+});
+
+/**
+ * @desc    Get progress velocity
+ * @route   GET /api/mars/progress/velocity
+ * @access  Private
+ */
+exports.getProgressVelocity = asyncHandler(async (req, res) => {
+  const { goalId } = req.query;
+
+  if (!goalId) {
+    res.status(400);
+    throw new Error('Please provide a goalId');
   }
 
-  calculateConsistency(progressHistory) {
-    if (progressHistory.length < 2) return 0;
-    
-    const intervals = [];
-    for (let i = 1; i < progressHistory.length; i++) {
-      const daysBetween = (new Date(progressHistory[i].date) - new Date(progressHistory[i-1].date)) / 86400000;
-      intervals.push(daysBetween);
+  const goal = await Goal.findById(goalId);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to access this goal');
+  }
+
+  // Calculate velocity
+  const velocity = await goalTracker.calculateVelocity(goalId);
+
+  res.status(200).json({
+    success: true,
+    data: velocity
+  });
+});
+
+/**
+ * @desc    Get progress predictions
+ * @route   GET /api/mars/progress/predictions
+ * @access  Private
+ */
+exports.getProgressPredictions = asyncHandler(async (req, res) => {
+  const { goalId } = req.query;
+
+  if (!goalId) {
+    res.status(400);
+    throw new Error('Please provide a goalId');
+  }
+
+  const goal = await Goal.findById(goalId);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to access this goal');
+  }
+
+  // Use prediction engine (from Phoenix services)
+  const predictionEngine = require('../services/phoenix/predictionEngine');
+  const predictions = await predictionEngine.predictGoalSuccess(goalId);
+
+  res.status(200).json({
+    success: true,
+    data: predictions
+  });
+});
+
+// ========================================
+// D. MILESTONES (2 methods)
+// ========================================
+
+/**
+ * @desc    Create milestone for goal
+ * @route   POST /api/mars/goals/:id/milestones
+ * @access  Private
+ */
+exports.createMilestone = asyncHandler(async (req, res) => {
+  const { title, targetValue, targetDate } = req.body;
+
+  const goal = await Goal.findById(req.params.id);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to modify this goal');
+  }
+
+  // Add milestone to embedded array
+  goal.milestones.push({
+    title,
+    targetValue,
+    targetDate,
+    completed: false
+  });
+
+  await goal.save();
+
+  res.status(201).json({
+    success: true,
+    data: goal.milestones
+  });
+});
+
+/**
+ * @desc    Complete milestone
+ * @route   POST /api/mars/milestones/:id/complete
+ * @access  Private
+ */
+exports.completeMilestone = asyncHandler(async (req, res) => {
+  const milestoneId = req.params.id;
+
+  // Find goal containing this milestone
+  const goal = await Goal.findOne({
+    userId: req.user.id,
+    'milestones._id': milestoneId
+  });
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Milestone not found');
+  }
+
+  // Find and update milestone
+  const milestone = goal.milestones.id(milestoneId);
+  milestone.completed = true;
+  milestone.completedAt = Date.now();
+
+  await goal.save();
+
+  // Find next incomplete milestone
+  const nextMilestone = goal.milestones.find(m => !m.completed);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      milestone,
+      nextMilestone
     }
-    
-    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-    const variance = intervals.reduce((sum, i) => sum + Math.pow(i - avgInterval, 2), 0) / intervals.length;
-    
-    return Math.max(0, 1 - (variance / avgInterval));
+  });
+});
+
+// ========================================
+// E. HABITS (2 methods)
+// ========================================
+
+/**
+ * @desc    Create habit
+ * @route   POST /api/mars/habits
+ * @access  Private
+ */
+exports.createHabit = asyncHandler(async (req, res) => {
+  const { title, frequency, linkedGoalId } = req.body;
+
+  if (!linkedGoalId) {
+    res.status(400);
+    throw new Error('linkedGoalId is required to attach habit to a goal');
   }
 
-  async identifyRiskFactors(userId, goal) {
-    const risks = [];
-    
-    const recentWearable = await WearableData.findOne({ userId }).sort('-date');
-    if (recentWearable?.recoveryScore < 50) {
-      risks.push('Low recovery may impact progress');
+  const goal = await Goal.findById(linkedGoalId);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
+  }
+
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to modify this goal');
+  }
+
+  // Add habit to embedded array
+  goal.habits.push({
+    title,
+    frequency,
+    streak: 0,
+    lastCompleted: null
+  });
+
+  await goal.save();
+
+  res.status(201).json({
+    success: true,
+    data: goal.habits
+  });
+});
+
+/**
+ * @desc    Log habit completion
+ * @route   POST /api/mars/habits/:id/log
+ * @access  Private
+ */
+exports.logHabit = asyncHandler(async (req, res) => {
+  const { completed, date } = req.body;
+  const habitId = req.params.id;
+
+  // Find goal containing this habit
+  const goal = await Goal.findOne({
+    userId: req.user.id,
+    'habits._id': habitId
+  });
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Habit not found');
+  }
+
+  // Find habit
+  const habit = goal.habits.id(habitId);
+
+  // Update streak
+  const logDate = date ? new Date(date) : new Date();
+  habit.lastCompleted = logDate;
+
+  if (completed) {
+    habit.streak = (habit.streak || 0) + 1;
+  } else {
+    habit.streak = 0;
+  }
+
+  await goal.save();
+
+  // Generate motivational message
+  const motivation = await motivationEngine.generateHabitMotivation(habit, goal);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      habit,
+      streak: habit.streak,
+      motivation
     }
-    
-    const daysRemaining = Math.ceil((new Date(goal.deadline) - Date.now()) / 86400000);
-    if (daysRemaining < 14) {
-      risks.push('Approaching deadline');
-    }
-    
-    return risks;
+  });
+});
+
+// ========================================
+// F. ANALYTICS & BOTTLENECKS (1 method)
+// ========================================
+
+/**
+ * @desc    Get bottleneck analysis
+ * @route   GET /api/mars/progress/bottlenecks
+ * @access  Private
+ */
+exports.getBottlenecks = asyncHandler(async (req, res) => {
+  const { goalId } = req.query;
+
+  if (!goalId) {
+    res.status(400);
+    throw new Error('Please provide a goalId');
   }
 
-  generateRecommendations(velocity, riskFactors) {
-    const recommendations = [];
-    
-    if (velocity < 0.5) {
-      recommendations.push('Increase effort intensity');
-      recommendations.push('Consider daily check-ins');
-    }
-    
-    if (riskFactors.includes('Low recovery')) {
-      recommendations.push('Prioritize sleep and recovery');
-    }
-    
-    return recommendations;
+  const goal = await Goal.findById(goalId);
+
+  if (!goal) {
+    res.status(404);
+    throw new Error('Goal not found');
   }
 
-  calculateCorrelation(x, y) {
-    if (x.length !== y.length || x.length === 0) return 0;
-    
-    const n = x.length;
-    const sumX = x.reduce((a, b) => a + b, 0);
-    const sumY = y.reduce((a, b) => a + b, 0);
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-    const sumY2 = y.reduce((sum, yi) => sum + yi * yi, 0);
-    
-    const num = n * sumXY - sumX * sumY;
-    const den = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-    
-    return den === 0 ? 0 : num / den;
+  // Verify ownership
+  if (goal.userId.toString() !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to access this goal');
   }
 
-  isSameDay(date1, date2) {
-    const d1 = new Date(date1);
-    const d2 = new Date(date2);
-    return d1.toDateString() === d2.toDateString();
-  }
+  // Analyze bottlenecks
+  const bottlenecks = await goalTracker.analyzeBottlenecks(goalId);
 
-  generateCorrelationInsight(hrvCorr, sleepCorr) {
-    if (hrvCorr > 0.5) return 'Goal progress strongly improves with better HRV';
-    if (sleepCorr > 0.5) return 'Sleep quality directly impacts goal achievement';
-    if (hrvCorr < -0.5) return 'High stress may be hindering progress';
-    return 'Moderate correlation with health metrics';
-  }
+  res.status(200).json({
+    success: true,
+    data: bottlenecks
+  });
+});
 
-  generateHealthOptimizedSchedule(correlations) {
-    // This would integrate with calendar to suggest optimal training times
-    return {
-      optimalWorkoutTime: 'Morning (high HRV correlation)',
-      recoveryDays: ['Wednesday', 'Sunday'],
-      intensityDistribution: '40% high, 40% moderate, 20% recovery'
-    };
-  }
+// ========================================
+// G. MOTIVATIONAL SYSTEMS (2 methods)
+// ========================================
 
-  calculateFitnessLevel(avgSteps, workoutFrequency) {
-    const score = (avgSteps / 10000) * 50 + (workoutFrequency * 7) * 50;
-    if (score >= 80) return 'advanced';
-    if (score >= 50) return 'intermediate';
-    return 'beginner';
-  }
+/**
+ * @desc    Get motivational interventions
+ * @route   GET /api/mars/motivation/interventions
+ * @access  Private
+ */
+exports.getMotivationalInterventions = asyncHandler(async (req, res) => {
+  // Get interventions
+  const interventions = await motivationEngine.getInterventions(req.user.id);
 
-  calculateConfidenceScore(metrics) {
-    return Math.min(95, 
-      50 + 
-      (metrics.workoutsPerWeek * 5) + 
-      (metrics.avgDailySteps / 1000)
-    );
-  }
+  res.status(200).json({
+    success: true,
+    data: interventions
+  });
+});
 
-  async adjustGoalsBasedOnHistory(userId, suggestedGoals) {
-    const previousGoals = await Goal.find({ clientId: userId, completed: true });
-    const completionRate = previousGoals.filter(g => g.completed).length / previousGoals.length;
-    
-    return suggestedGoals.map(goal => ({
-      ...goal,
-      target: goal.target * (completionRate > 0.7 ? 1.1 : 0.9),
-      difficulty: completionRate > 0.7 ? 'challenging' : 'moderate'
-    }));
-  }
+/**
+ * @desc    Trigger motivation boost
+ * @route   POST /api/mars/motivation/boost
+ * @access  Private
+ */
+exports.triggerMotivationBoost = asyncHandler(async (req, res) => {
+  const { goalId, reason } = req.body;
 
-  async storeInterventions(userId, interventions) {
-    // Store in database for tracking
-    return interventions;
-  }
+  // Generate motivational boost
+  const boost = await motivationEngine.generateBoost(req.user.id, {
+    goalId,
+    reason
+  });
 
-  sendMotivationalNotifications(userId, interventions) {
-    if (global.sendRealtimeNotification) {
-      interventions.forEach(intervention => {
-        global.sendRealtimeNotification(userId.toString(), {
-          type: 'motivation',
-          severity: intervention.type,
-          message: intervention.message,
-          actions: intervention.suggestedActions
-        });
-      });
-    }
-  }
-}
-
-// ============================================
-// EXPRESS ROUTES
-// ============================================
-
-const marsController = new MarsController();
-
-exports.generateGoals = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const goals = await marsController.generateSmartGoals(userId);
-    res.json(goals);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-exports.predictCompletion = async (req, res) => {
-  try {
-    const { goalId } = req.params;
-    const prediction = await marsController.predictGoalCompletion(goalId);
-    res.json({ success: true, prediction });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-exports.triggerMotivation = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const interventions = await marsController.triggerMotivationalIntervention(userId);
-    res.json({ success: true, interventions });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-exports.analyzeCorrelations = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const analysis = await marsController.correlateGoalsWithHealth(userId);
-    res.json({ success: true, analysis });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
+  res.status(200).json({
+    success: true,
+    data: boost
+  });
+});
 
 module.exports = exports;

@@ -1,590 +1,1063 @@
-// Src/controllers/mercuryController.js - Complete Fitness Intelligence System
-const Workout = require('../models/Workout');
-const Exercise = require('../models/Exercise');
+// mercuryController.js
+// Mercury Controller - Health, Wearables, Biometrics, Sleep, Recovery System
+// Total Methods: 38
+// Base Path: /api/mercury
+
+const WearableDevice = require('../models/WearableDevice');
 const WearableData = require('../models/WearableData');
-const User = require('../models/User');
-const Goal = require('../models/Goal');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const EventEmitter = require('events');
+const HealthMetric = require('../models/HealthMetric');
+const SleepData = require('../models/SleepData');
+const RecoveryScore = require('../models/RecoveryScore');
+const BiometricSnapshot = require('../models/BiometricSnapshot');
+const BodyComposition = require('../models/BodyComposition');
 
-class MercuryController extends EventEmitter {
-  constructor() {
-    super();
-    this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || '');
-    this.correlationPatterns = new Map();
-    this.injuryRiskThresholds = {
-      volume: { weekly: 1.5, daily: 1.3 },
-      intensity: { max: 0.95, sustained: 0.85 },
-      fatigue: { acute: 7, chronic: 5 }
-    };
-  }
+// Services
+const deviceSync = require('../services/mercury/deviceSync');
+const biometricEngine = require('../services/mercury/biometricEngine');
+const recoveryCalc = require('../services/mercury/recoveryCalc');
+const dexaSimulator = require('../services/mercury/dexaSimulator');
+const metabolicCalculator = require('../services/mercury/metabolicCalculator');
+const healthRatios = require('../services/mercury/healthRatios');
 
-  // ============================================
-  // REAL-TIME WORKOUT TRACKING WITH FORM ANALYSIS
-  // ============================================
-  
-  async trackWorkoutRealtime(req, res) {
-    try {
-      const { userId, workoutId, exerciseIndex, setData } = req.body;
-      
-      // Get current workout and wearable data
-      const [workout, wearableData] = await Promise.all([
-        Workout.findById(workoutId),
-        WearableData.findOne({ userId }).sort('-date')
-      ]);
-      
-      if (!workout) {
-        return res.status(404).json({ success: false, message: 'Workout not found' });
-      }
-      
-      // Real-time form analysis based on set performance
-      const formAnalysis = await this.analyzeForm(setData, wearableData);
-      
-      // Update workout with real-time data
-      if (!workout.exercises[exerciseIndex].actualSets) {
-        workout.exercises[exerciseIndex].actualSets = [];
-      }
-      
-      workout.exercises[exerciseIndex].actualSets.push({
-        ...setData,
-        formScore: formAnalysis.score,
-        powerOutput: formAnalysis.powerOutput,
-        velocityLoss: formAnalysis.velocityLoss,
-        timestamp: new Date()
-      });
-      
-      // Check for injury risk in real-time
-      const injuryRisk = await this.assessInjuryRisk(userId, workout, setData, wearableData);
-      
-      if (injuryRisk.level === 'high') {
-        // Auto-modify remaining sets
-        workout.exercises[exerciseIndex].sets = Math.max(
-          workout.exercises[exerciseIndex].actualSets.length + 1,
-          workout.exercises[exerciseIndex].sets - 2
-        );
-        workout.exercises[exerciseIndex].notes = `⚠️ INJURY RISK: ${injuryRisk.reason}`;
-      }
-      
-      await workout.save();
-      
-      // Emit real-time events
-      this.emit('workout.set.completed', {
-        userId,
-        workoutId,
-        exerciseIndex,
-        setData,
-        formAnalysis,
-        injuryRisk
-      });
-      
-      // Send WebSocket notification
-      if (global.sendRealtimeNotification) {
-        global.sendRealtimeNotification(userId, {
-          type: 'workout_update',
-          exerciseName: workout.exercises[exerciseIndex].name,
-          setNumber: workout.exercises[exerciseIndex].actualSets.length,
-          formScore: formAnalysis.score,
-          injuryRisk: injuryRisk.level,
-          message: formAnalysis.feedback
-        });
-      }
-      
-      res.json({
-        success: true,
-        formAnalysis,
-        injuryRisk,
-        recommendation: formAnalysis.recommendation,
-        modifiedWorkout: injuryRisk.level === 'high'
-      });
-      
-    } catch (error) {
-      console.error('Real-time tracking error:', error);
-      res.status(500).json({ success: false, message: 'Tracking failed' });
-    }
-  }
+// ========================================
+// A. BIOMETRIC ANALYSIS (10 methods)
+// ========================================
 
-  // ============================================
-  // EXERCISE RECOMMENDATION AI
-  // ============================================
-  
-  async recommendExercises(req, res) {
-    try {
-      const { userId } = req.params;
-      const { targetMuscles, equipment, timeAvailable } = req.body;
-      
-      // Get user's training history and recovery status
-      const [workoutHistory, wearableData, injuries, goals] = await Promise.all([
-        Workout.find({ clientId: userId, completed: true })
-          .sort('-completedAt')
-          .limit(30),
-        WearableData.findOne({ userId }).sort('-date'),
-        this.getUserInjuryHistory(userId),
-        Goal.find({ clientId: userId, completed: false })
-      ]);
-      
-      // Analyze muscle group frequency
-      const muscleFrequency = this.analyzeMuscleFrequency(workoutHistory);
-      
-      // Generate AI recommendations
-      const recommendations = await this.generateAIRecommendations({
-        targetMuscles,
-        equipment,
-        timeAvailable,
-        recoveryScore: wearableData?.recoveryScore || 50,
-        muscleFrequency,
-        injuries,
-        goals
-      });
-      
-      // Score and rank exercises
-      const scoredExercises = await this.scoreExercises(recommendations, {
-        userLevel: this.calculateUserLevel(workoutHistory),
-        recovery: wearableData?.recoveryScore || 50,
-        recentWork: muscleFrequency
-      });
-      
-      // Create optimal workout structure
-      const workoutPlan = this.structureWorkout(scoredExercises, timeAvailable);
-      
-      res.json({
-        success: true,
-        recommendations: workoutPlan,
-        reasoning: {
-          recoveryAdjusted: wearableData?.recoveryScore < 60,
-          injuryConsiderations: injuries.length > 0,
-          goalAligned: goals.map(g => g.name),
-          muscleBalance: this.assessMuscleBalance(muscleFrequency)
-        }
-      });
-      
-    } catch (error) {
-      console.error('Exercise recommendation error:', error);
-      res.status(500).json({ success: false, message: 'Recommendation failed' });
-    }
-  }
-
-  // ============================================
-  // PROGRESSIVE OVERLOAD AUTOMATION
-  // ============================================
-  
-  async automateProgressiveOverload(req, res) {
-    try {
-      const { userId } = req.params;
-      
-      // Get last 8 weeks of workout data
-      const eightWeeksAgo = new Date(Date.now() - 56 * 24 * 60 * 60 * 1000);
-      const workouts = await Workout.find({
-        clientId: userId,
-        completed: true,
-        completedAt: { $gte: eightWeeksAgo }
-      }).sort('completedAt');
-      
-      if (workouts.length < 4) {
-        return res.json({
-          success: false,
-          message: 'Insufficient training history for progression analysis'
-        });
+// 1. Get DEXA scan simulation
+exports.getDexaScan = async (req, res) => {
+  try {
+    const userId = req.query.userId || req.user.id;
+    
+    // Simulate full DEXA scan using body measurements + wearable data
+    const dexaScan = await dexaSimulator.generateScan(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        bodyFatPercentage: dexaScan.bodyFat,
+        leanMass: dexaScan.leanMass,
+        boneMass: dexaScan.boneMass,
+        visceralFat: dexaScan.visceralFat,
+        regionalAnalysis: {
+          arms: dexaScan.regions.arms,
+          legs: dexaScan.regions.legs,
+          trunk: dexaScan.regions.trunk,
+          android: dexaScan.regions.android,
+          gynoid: dexaScan.regions.gynoid
+        },
+        tScore: dexaScan.boneDensity.tScore,
+        zScore: dexaScan.boneDensity.zScore,
+        fraxRisk: dexaScan.fraxRisk,
+        recommendations: dexaScan.recommendations
       }
-      
-      // Analyze progression patterns
-      const progressionAnalysis = this.analyzeProgression(workouts);
-      
-      // Generate next workout with automated progression
-      const nextWorkout = await this.generateProgressedWorkout(
-        workouts[workouts.length - 1],
-        progressionAnalysis
-      );
-      
-      // Apply recovery-based modifications
-      const wearableData = await WearableData.findOne({ userId }).sort('-date');
-      if (wearableData?.recoveryScore < 60) {
-        nextWorkout.exercises = this.adjustForRecovery(
-          nextWorkout.exercises,
-          wearableData.recoveryScore
-        );
-      }
-      
-      // Save the new workout
-      const savedWorkout = await Workout.create({
-        ...nextWorkout,
-        clientId: userId,
-        createdBy: userId,
-        assignedBy: userId,
-        notes: `🤖 AI-Generated Progressive Overload - Week ${progressionAnalysis.currentWeek}`
-      });
-      
-      res.json({
-        success: true,
-        workout: savedWorkout,
-        progression: {
-          volumeIncrease: `${progressionAnalysis.volumeChange}%`,
-          intensityIncrease: `${progressionAnalysis.intensityChange}%`,
-          currentPhase: progressionAnalysis.phase,
-          recommendation: progressionAnalysis.recommendation
-        }
-      });
-      
-    } catch (error) {
-      console.error('Progressive overload error:', error);
-      res.status(500).json({ success: false, message: 'Progression failed' });
-    }
-  }
-
-  // ============================================
-  // INJURY PREVENTION ALGORITHMS
-  // ============================================
-  
-  async assessInjuryRisk(userId, workout, currentSet, wearableData) {
-    const riskFactors = [];
-    let riskScore = 0;
-    
-    // 1. Check form degradation
-    if (currentSet.velocityLoss > 30) {
-      riskScore += 25;
-      riskFactors.push('Significant velocity loss detected');
-    }
-    
-    // 2. Check volume spike
-    const weeklyVolume = await this.calculateWeeklyVolume(userId);
-    const lastWeekVolume = await this.calculateWeeklyVolume(userId, 1);
-    const volumeIncrease = ((weeklyVolume - lastWeekVolume) / lastWeekVolume) * 100;
-    
-    if (volumeIncrease > 50) {
-      riskScore += 30;
-      riskFactors.push(`Volume spike: ${volumeIncrease.toFixed(0)}% increase`);
-    }
-    
-    // 3. Check recovery status
-    if (wearableData) {
-      if (wearableData.recoveryScore < 30) {
-        riskScore += 35;
-        riskFactors.push('Critical recovery state');
-      } else if (wearableData.hrv < 40) {
-        riskScore += 20;
-        riskFactors.push('Low HRV indicates high stress');
-      }
-    }
-    
-    // 4. Check training frequency
-    const recentWorkouts = await Workout.countDocuments({
-      clientId: userId,
-      completed: true,
-      completedAt: { $gte: new Date(Date.now() - 72 * 60 * 60 * 1000) }
     });
-    
-    if (recentWorkouts > 5) {
-      riskScore += 20;
-      riskFactors.push('High training frequency without adequate rest');
-    }
-    
-    return {
-      score: riskScore,
-      level: riskScore >= 60 ? 'high' : riskScore >= 40 ? 'medium' : 'low',
-      factors: riskFactors,
-      reason: riskFactors[0] || 'Normal risk levels',
-      recommendation: this.getInjuryPreventionRecommendation(riskScore)
-    };
-  }
-
-  // ============================================
-  // WORKOUT EFFECTIVENESS SCORING
-  // ============================================
-  
-  async scoreWorkoutEffectiveness(req, res) {
-    try {
-      const { workoutId } = req.params;
-      
-      const workout = await Workout.findById(workoutId);
-      if (!workout || !workout.completed) {
-        return res.status(400).json({
-          success: false,
-          message: 'Workout not found or not completed'
-        });
-      }
-      
-      // Multi-factor effectiveness analysis
-      const scores = {
-        execution: this.scoreExecution(workout),
-        intensity: this.scoreIntensity(workout),
-        volume: this.scoreVolume(workout),
-        progression: await this.scoreProgression(workout),
-        recovery: await this.scoreRecoveryImpact(workout)
-      };
-      
-      const overallScore = Object.values(scores).reduce((a, b) => a + b) / 5;
-      
-      // Generate insights
-      const insights = await this.generateWorkoutInsights(workout, scores);
-      
-      // Update workout with effectiveness data
-      workout.effectivenessScore = overallScore;
-      workout.effectivenessBreakdown = scores;
-      await workout.save();
-      
-      res.json({
-        success: true,
-        overallScore: Math.round(overallScore),
-        breakdown: scores,
-        insights,
-        recommendations: this.getEffectivenessRecommendations(scores)
-      });
-      
-    } catch (error) {
-      console.error('Workout scoring error:', error);
-      res.status(500).json({ success: false, message: 'Scoring failed' });
-    }
-  }
-
-  // ============================================
-  // SOCIAL COMPARISON ENGINE
-  // ============================================
-  
-  async compareSocialPerformance(req, res) {
-    try {
-      const { userId } = req.params;
-      const { exerciseName, anonymize = true } = req.body;
-      
-      // Get user's performance
-      const userWorkouts = await Workout.find({
-        clientId: userId,
-        completed: true,
-        'exercises.name': exerciseName
-      }).sort('-completedAt').limit(10);
-      
-      if (userWorkouts.length === 0) {
-        return res.json({
-          success: false,
-          message: 'No data for this exercise'
-        });
-      }
-      
-      // Calculate user's metrics
-      const userMetrics = this.calculatePerformanceMetrics(userWorkouts, exerciseName);
-      
-      // Get comparison group (similar users)
-      const comparisonGroup = await this.getSimilarUsers(userId);
-      
-      // Get group performance data
-      const groupPerformance = await this.getGroupPerformance(
-        comparisonGroup,
-        exerciseName
-      );
-      
-      // Calculate percentiles and rankings
-      const comparison = {
-        userMetrics,
-        groupAverage: groupPerformance.average,
-        percentile: this.calculatePercentile(userMetrics, groupPerformance.all),
-        ranking: this.calculateRanking(userMetrics, groupPerformance.all),
-        totalUsers: groupPerformance.all.length,
-        improvement: this.calculateImprovementRate(userWorkouts, exerciseName)
-      };
-      
-      // Generate motivational insights
-      const insights = await this.generateSocialInsights(comparison);
-      
-      res.json({
-        success: true,
-        comparison,
-        insights,
-        anonymizedLeaderboard: anonymize ? 
-          this.getAnonymizedLeaderboard(groupPerformance.all) : null
-      });
-      
-    } catch (error) {
-      console.error('Social comparison error:', error);
-      res.status(500).json({ success: false, message: 'Comparison failed' });
-    }
-  }
-
-  // ============================================
-  // VIRTUAL COACHING PERSONALITY
-  // ============================================
-  
-  async getVirtualCoachingAdvice(req, res) {
-    try {
-      const { userId } = req.params;
-      const { context = 'general' } = req.body;
-      
-      // Gather comprehensive user data
-      const [userData, recentWorkouts, wearableData, goals] = await Promise.all([
-        User.findById(userId),
-        Workout.find({ clientId: userId }).sort('-completedAt').limit(5),
-        WearableData.findOne({ userId }).sort('-date'),
-        Goal.find({ clientId: userId, completed: false })
-      ]);
-      
-      // Build coaching personality context
-      const coachingStyle = this.determineCoachingStyle(userData, recentWorkouts);
-      
-      // Generate AI coaching advice
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
-      
-      const prompt = `You are an elite virtual fitness coach with personality style: ${coachingStyle}.
-      
-      User Context:
-      - Recent completion rate: ${this.calculateCompletionRate(recentWorkouts)}%
-      - Recovery score: ${wearableData?.recoveryScore || 'unknown'}
-      - Current goals: ${goals.map(g => g.name).join(', ')}
-      - Specific context: ${context}
-      
-      Provide personalized, motivating coaching advice that:
-      1. Addresses their current situation
-      2. Uses their preferred coaching style
-      3. Gives specific, actionable guidance
-      4. Maintains consistent personality
-      
-      Keep response under 150 words, direct and impactful.`;
-      
-      const result = await model.generateContent(prompt);
-      const advice = result.response.text();
-      
-      // Store coaching interaction
-      await this.storeCoachingInteraction(userId, context, advice);
-      
-      res.json({
-        success: true,
-        advice,
-        coachingStyle,
-        context: {
-          mood: this.assessUserMood(recentWorkouts),
-          energy: wearableData?.recoveryScore || 50,
-          consistency: this.calculateCompletionRate(recentWorkouts)
-        }
-      });
-      
-    } catch (error) {
-      console.error('Virtual coaching error:', error);
-      res.status(500).json({ success: false, message: 'Coaching failed' });
-    }
-  }
-
-  // ============================================
-  // HELPER METHODS
-  // ============================================
-  
-  analyzeForm(setData, wearableData) {
-    const { reps, weight, duration } = setData;
-    
-    // Calculate velocity (simplified)
-    const velocity = duration > 0 ? reps / (duration / 1000) : 1;
-    const expectedVelocity = 0.5; // reps per second baseline
-    const velocityLoss = ((expectedVelocity - velocity) / expectedVelocity) * 100;
-    
-    // Calculate power output
-    const powerOutput = weight * reps * velocity;
-    
-    // Form score calculation
-    let formScore = 100;
-    if (velocityLoss > 20) formScore -= 20;
-    if (velocityLoss > 40) formScore -= 30;
-    if (wearableData?.heartRate > 180) formScore -= 10;
-    
-    return {
-      score: Math.max(0, formScore),
-      powerOutput: Math.round(powerOutput),
-      velocityLoss: Math.round(velocityLoss),
-      feedback: formScore >= 80 ? 'Excellent form maintained' :
-                formScore >= 60 ? 'Form degrading - focus on control' :
-                'Poor form detected - reduce weight or rest',
-      recommendation: velocityLoss > 30 ? 'Consider ending set' : 'Continue with focus'
-    };
-  }
-
-  calculateWeeklyVolume(userId, weeksAgo = 0) {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - (7 * (weeksAgo + 1)));
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() - (7 * weeksAgo));
-    
-    return Workout.aggregate([
-      {
-        $match: {
-          clientId: userId,
-          completed: true,
-          completedAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $unwind: '$exercises'
-      },
-      {
-        $group: {
-          _id: null,
-          totalVolume: {
-            $sum: {
-              $multiply: ['$exercises.sets', '$exercises.reps', '$exercises.weight']
-            }
-          }
-        }
-      }
-    ]).then(result => result[0]?.totalVolume || 0);
-  }
-
-  getInjuryPreventionRecommendation(riskScore) {
-    if (riskScore >= 60) {
-      return 'STOP current session. Schedule recovery day. Consider massage or stretching.';
-    } else if (riskScore >= 40) {
-      return 'Reduce intensity by 30%. Focus on form. Add mobility work.';
-    } else {
-      return 'Continue with normal training. Monitor form closely.';
-    }
-  }
-
-  analyzeMuscleFrequency(workoutHistory) {
-    const frequency = {};
-    
-    workoutHistory.forEach(workout => {
-      workout.exercises.forEach(exercise => {
-        const muscle = exercise.muscleGroup || 'unknown';
-        frequency[muscle] = (frequency[muscle] || 0) + 1;
-      });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating DEXA scan',
+      error: error.message
     });
-    
-    return frequency;
   }
-
-  calculateUserLevel(workoutHistory) {
-    const totalWorkouts = workoutHistory.length;
-    const avgVolume = workoutHistory.reduce((sum, w) => {
-      return sum + w.exercises.reduce((eSum, e) => {
-        return eSum + (e.sets * e.reps * e.weight);
-      }, 0);
-    }, 0) / totalWorkouts;
-    
-    if (avgVolume > 50000) return 'advanced';
-    if (avgVolume > 20000) return 'intermediate';
-    return 'beginner';
-  }
-
-  determineCoachingStyle(userData, recentWorkouts) {
-    const completionRate = this.calculateCompletionRate(recentWorkouts);
-    
-    if (completionRate < 50) {
-      return 'supportive_encouraging';
-    } else if (completionRate > 80) {
-      return 'challenging_pushy';
-    } else {
-      return 'balanced_motivational';
-    }
-  }
-
-  calculateCompletionRate(workouts) {
-    if (workouts.length === 0) return 0;
-    const completed = workouts.filter(w => w.completed).length;
-    return Math.round((completed / workouts.length) * 100);
-  }
-}
-
-// Export singleton instance and methods
-const mercuryController = new MercuryController();
-
-module.exports = {
-  trackWorkoutRealtime: (req, res) => mercuryController.trackWorkoutRealtime(req, res),
-  recommendExercises: (req, res) => mercuryController.recommendExercises(req, res),
-  automateProgressiveOverload: (req, res) => mercuryController.automateProgressiveOverload(req, res),
-  scoreWorkoutEffectiveness: (req, res) => mercuryController.scoreWorkoutEffectiveness(req, res),
-  compareSocialPerformance: (req, res) => mercuryController.compareSocialPerformance(req, res),
-  getVirtualCoachingAdvice: (req, res) => mercuryController.getVirtualCoachingAdvice(req, res),
-  mercuryEventEmitter: mercuryController
 };
+
+// 2. Get comprehensive body composition
+exports.getBodyComposition = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Aggregates: DEXA + measurements + calculations
+    const composition = await biometricEngine.getComprehensiveComposition(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        dexa: composition.dexaData,
+        ratios: composition.healthRatios,
+        metabolic: composition.metabolicRates,
+        predictions: {
+          futureBodyFat: composition.predictions.bodyFat,
+          leanMassGain: composition.predictions.leanMass
+        },
+        insights: composition.aiInsights
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving body composition',
+      error: error.message
+    });
+  }
+};
+
+// 3. Get metabolic rate analysis
+exports.getMetabolicRate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Calculates BMR, RMR, TDEE using multiple formulas
+    const metabolic = await metabolicCalculator.calculate(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        bmr: {
+          harris: metabolic.bmr.harrisBenedict,
+          mifflin: metabolic.bmr.mifflinStJeor,
+          katch: metabolic.bmr.katchMcArdle
+        },
+        rmr: metabolic.rmr,
+        tdee: {
+          sedentary: metabolic.tdee.sedentary,
+          light: metabolic.tdee.lightlyActive,
+          moderate: metabolic.tdee.moderatelyActive,
+          active: metabolic.tdee.veryActive,
+          veryActive: metabolic.tdee.extraActive
+        },
+        recommended: metabolic.recommended,
+        accuracy: metabolic.formulaComparison
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating metabolic rate',
+      error: error.message
+    });
+  }
+};
+
+// 4. Calculate metabolic rate (manual input)
+exports.calculateMetabolic = async (req, res) => {
+  try {
+    const { weight, height, age, activityLevel, bodyFat, sex } = req.body;
+    
+    // Manual calculation without requiring user profile
+    const results = await metabolicCalculator.manualCalculate({
+      weight,
+      height,
+      age,
+      activityLevel,
+      bodyFat,
+      sex
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        bmr: results.bmr,
+        tdee: results.tdee,
+        recommendations: results.recommendations
+      }
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: 'Error calculating metabolic rate',
+      error: error.message
+    });
+  }
+};
+
+// 5. Get health ratios
+exports.getHealthRatios = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Calculates: ABSI, BRI, WHR, waist-to-height ratio
+    const ratios = await healthRatios.calculateAll(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        absi: {
+          value: ratios.absi.value,
+          risk: ratios.absi.riskLevel,
+          percentile: ratios.absi.percentile
+        },
+        bri: {
+          value: ratios.bri.value,
+          category: ratios.bri.category
+        },
+        whr: {
+          value: ratios.whr.value,
+          risk: ratios.whr.riskLevel
+        },
+        waistToHeight: {
+          value: ratios.waistToHeight.value,
+          category: ratios.waistToHeight.category
+        },
+        overallRisk: ratios.overallRiskAssessment
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating health ratios',
+      error: error.message
+    });
+  }
+};
+
+// 6. Get visceral fat assessment
+exports.getVisceralFat = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Estimates visceral fat from waist circumference + body fat
+    const visceralFat = await dexaSimulator.estimateVisceralFat(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        level: visceralFat.level,
+        risk: visceralFat.riskCategory,
+        healthImpact: visceralFat.healthImplications,
+        recommendations: visceralFat.recommendations
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error assessing visceral fat',
+      error: error.message
+    });
+  }
+};
+
+// 7. Get bone density analysis
+exports.getBoneDensity = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Part of DEXA simulation
+    const boneDensity = await dexaSimulator.boneDensityAnalysis(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        tScore: boneDensity.tScore,
+        zScore: boneDensity.zScore,
+        fraxRisk: boneDensity.fraxRisk,
+        osteoporosisRisk: boneDensity.osteoporosisRisk,
+        recommendations: boneDensity.recommendations
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing bone density',
+      error: error.message
+    });
+  }
+};
+
+// 8. Get hydration intelligence
+exports.getHydration = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Tracks water intake + calculates needs based on activity
+    const hydration = await biometricEngine.analyzeHydration(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        status: hydration.status,
+        todayIntake: hydration.intakeMl,
+        dailyGoal: hydration.goalMl,
+        recommendations: hydration.recommendations,
+        alerts: hydration.alerts
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing hydration',
+      error: error.message
+    });
+  }
+};
+
+// 9. Get biometric trends
+exports.getBiometricTrends = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days = 30, metrics = 'bodyFat,leanMass,weight' } = req.query;
+    const metricsArray = metrics.split(',');
+    
+    // Time-series analysis of body composition changes
+    const trends = await biometricEngine.analyzeTrends(userId, parseInt(days), metricsArray);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        trends: trends.timeSeriesData,
+        predictions: trends.futurePredictions,
+        insights: trends.aiGeneratedInsights,
+        alerts: trends.significantChanges
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing biometric trends',
+      error: error.message
+    });
+  }
+};
+
+// 10. Get biometric correlations
+exports.getBiometricCorrelations = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Correlation matrix between all biometric metrics
+    const correlations = await biometricEngine.calculateCorrelations(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        correlations: correlations.matrix,
+        strongestCorrelations: correlations.topCorrelations,
+        insights: correlations.insights
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating biometric correlations',
+      error: error.message
+    });
+  }
+};
+
+// ========================================
+// B. WEARABLE DEVICE MANAGEMENT (6 methods)
+// ========================================
+
+// 11. Connect wearable device
+exports.connectDevice = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const userId = req.user.id;
+    
+    // Initiates OAuth2/OAuth1 flow with PKCE support
+    const authFlow = await deviceSync.initiateConnection(userId, provider);
+    
+    res.status(200).json({
+      success: true,
+      authUrl: authFlow.authorizationUrl,
+      state: authFlow.state
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: `Error connecting to ${req.params.provider}`,
+      error: error.message
+    });
+  }
+};
+
+// 12. Exchange OAuth code
+exports.exchangeToken = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const { code, state } = req.body;
+    const userId = req.user.id;
+    
+    // Exchanges OAuth code for access token
+    const device = await deviceSync.exchangeToken(userId, provider, code, state);
+    
+    res.status(200).json({
+      success: true,
+      device: device,
+      connected: true
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: 'Error exchanging token',
+      error: error.message
+    });
+  }
+};
+
+// 13. Get all connected devices
+exports.getDevices = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const devices = await WearableDevice.find({ userId, isActive: true });
+    
+    res.status(200).json({
+      success: true,
+      devices: devices.map(device => ({
+        provider: device.provider,
+        lastSync: device.lastSync,
+        status: device.status,
+        connectedAt: device.connectedAt
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving devices',
+      error: error.message
+    });
+  }
+};
+
+// 14. Disconnect device
+exports.disconnectDevice = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const userId = req.user.id;
+    
+    // Disconnects device and revokes OAuth token
+    await deviceSync.disconnectDevice(userId, provider);
+    
+    res.status(200).json({
+      success: true,
+      message: `${provider} disconnected successfully`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error disconnecting device',
+      error: error.message
+    });
+  }
+};
+
+// 15. Manual sync device
+exports.syncDevice = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const userId = req.user.id;
+    
+    // Manually triggers device sync (last 7 days)
+    const syncResult = await deviceSync.manualSync(userId, provider);
+    
+    res.status(200).json({
+      success: true,
+      recordsAdded: syncResult.recordsAdded,
+      lastSync: syncResult.lastSync
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error syncing device',
+      error: error.message
+    });
+  }
+};
+
+// 16. Webhook handler
+exports.handleWebhook = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    
+    // Handles real-time webhooks from Fitbit, Polar
+    // Signature verification in controller
+    const verified = await deviceSync.verifyWebhookSignature(provider, req);
+    
+    if (!verified) {
+      return res.status(401).json({ success: false, message: 'Invalid signature' });
+    }
+    
+    await deviceSync.processWebhook(provider, req.body);
+    
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error processing webhook',
+      error: error.message
+    });
+  }
+};
+
+// ========================================
+// C. WEARABLE DATA & FUSION (4 methods)
+// ========================================
+
+// 17. Get unified wearable data
+exports.getWearableData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days = 7, metrics = 'hrv,sleep,steps,rhr' } = req.query;
+    const metricsArray = metrics.split(',');
+    
+    // Returns unified data from all connected devices
+    // Multi-device data fusion with conflict resolution
+    const data = await deviceSync.getUnifiedData(userId, parseInt(days), metricsArray);
+    
+    res.status(200).json({
+      success: true,
+      data: data.fusedData,
+      sources: data.sources,
+      fusionMethod: data.fusionMethod
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving wearable data',
+      error: error.message
+    });
+  }
+};
+
+// 18. Get raw data from specific provider
+exports.getRawData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { provider, days = 3 } = req.query;
+    
+    const rawData = await WearableData.find({
+      userId,
+      provider,
+      date: { $gte: new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
+    }).sort({ date: -1 });
+    
+    res.status(200).json({
+      success: true,
+      provider: provider,
+      data: rawData,
+      lastSync: rawData[0]?.syncedAt
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving raw data',
+      error: error.message
+    });
+  }
+};
+
+// 19. Manual data entry
+exports.manualDataEntry = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { date, hrv, rhr, sleep, steps, calories } = req.body;
+    
+    // Manual data entry for users without wearables
+    const data = await WearableData.create({
+      userId,
+      date,
+      hrv,
+      rhr,
+      sleep,
+      steps,
+      calories,
+      provider: 'manual',
+      isManual: true
+    });
+    
+    res.status(201).json({
+      success: true,
+      data: data
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: 'Error creating manual entry',
+      error: error.message
+    });
+  }
+};
+
+// 20. Get AI insights
+exports.getInsights = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // AI-generated insights from wearable data
+    // Uses Google Gemini to analyze patterns
+    const insights = await biometricEngine.generateInsights(userId);
+    
+    res.status(200).json({
+      success: true,
+      insights: insights.insights,
+      recommendations: insights.recommendations,
+      alerts: insights.alerts
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating insights',
+      error: error.message
+    });
+  }
+};
+
+// ========================================
+// D. HRV & HEART RATE (4 methods)
+// ========================================
+
+// 21. Get HRV analysis
+exports.getHRV = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Returns 7-day HRV trends and analysis
+    const hrv = await biometricEngine.analyzeHRV(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        average: hrv.average,
+        baseline: hrv.baseline,
+        deviation: hrv.deviation,
+        trend: hrv.trend,
+        alert: hrv.alert
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing HRV',
+      error: error.message
+    });
+  }
+};
+
+// 22. Get deep HRV analysis
+exports.getDeepHRVAnalysis = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Deep HRV analysis with frequency domain
+    const deepHRV = await biometricEngine.deepHRVAnalysis(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        timeDomain: deepHRV.timeDomain,
+        frequencyDomain: deepHRV.frequencyDomain,
+        nonlinear: deepHRV.nonlinear,
+        stress: deepHRV.stressLevel
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error performing deep HRV analysis',
+      error: error.message
+    });
+  }
+};
+
+// 23. Get heart rate analysis
+exports.getHeartRate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Returns resting heart rate trends
+    const heartRate = await biometricEngine.analyzeHeartRate(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        rhr: heartRate.restingHeartRate,
+        trends: heartRate.trends,
+        zones: heartRate.zones,
+        recovery: heartRate.recoveryStatus
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing heart rate',
+      error: error.message
+    });
+  }
+};
+
+// 24. Get readiness score
+exports.getReadinessScore = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Daily readiness score (0-100)
+    // Formula: 40% HRV + 25% sleep + 25% RHR + 10% load
+    const readiness = await biometricEngine.calculateReadiness(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        score: readiness.score,
+        factors: readiness.factors,
+        recommendation: readiness.recommendation,
+        trainingReady: readiness.trainingReady
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating readiness score',
+      error: error.message
+    });
+  }
+};
+
+// ========================================
+// E. SLEEP ANALYSIS (3 methods)
+// ========================================
+
+// 25. Get sleep data
+exports.getSleep = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days = 7 } = req.query;
+    
+    const sleepLogs = await SleepData.find({
+      userId,
+      date: { $gte: new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
+    }).sort({ date: -1 });
+    
+    const average = sleepLogs.reduce((sum, log) => sum + log.duration, 0) / sleepLogs.length;
+    
+    res.status(200).json({
+      success: true,
+      sleepLogs: sleepLogs,
+      average: average,
+      trends: await biometricEngine.analyzeSleepTrends(sleepLogs)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving sleep data',
+      error: error.message
+    });
+  }
+};
+
+// 26. Get sleep analysis
+exports.getSleepAnalysis = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Deep sleep quality analysis
+    const analysis = await biometricEngine.analyzeSleepQuality(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        quality: analysis.qualityScore,
+        stages: analysis.stageBreakdown,
+        efficiency: analysis.efficiency,
+        recommendations: analysis.recommendations
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing sleep',
+      error: error.message
+    });
+  }
+};
+
+// 27. Get sleep recommendations
+exports.getSleepRecommendations = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Personalized sleep optimization advice
+    const recommendations = await biometricEngine.generateSleepRecommendations(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        bedtime: recommendations.optimalBedtime,
+        wakeTime: recommendations.optimalWakeTime,
+        tips: recommendations.tips
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating sleep recommendations',
+      error: error.message
+    });
+  }
+};
+
+// ========================================
+// F. RECOVERY SCORING (11 methods)
+// ========================================
+
+// 28. Get latest recovery score
+exports.getLatestRecovery = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Today's comprehensive recovery score
+    const recovery = await recoveryCalc.calculateRecoveryScore(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        score: recovery.score,
+        components: recovery.components,
+        recommendation: recovery.recommendation,
+        trainingLoad: recovery.trainingLoad
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating recovery score',
+      error: error.message
+    });
+  }
+};
+
+// 29. Get recovery history
+exports.getRecoveryHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days = 30 } = req.query;
+    
+    const scores = await RecoveryScore.find({
+      userId,
+      date: { $gte: new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
+    }).sort({ date: -1 });
+    
+    const average = scores.reduce((sum, score) => sum + score.score, 0) / scores.length;
+    
+    res.status(200).json({
+      success: true,
+      scores: scores,
+      average: average,
+      trend: await recoveryCalc.analyzeTrend(scores)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving recovery history',
+      error: error.message
+    });
+  }
+};
+
+// 30. Force recalculate recovery
+exports.recalculateRecovery = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const recovery = await recoveryCalc.forceRecalculate(userId);
+    
+    res.status(200).json({
+      success: true,
+      score: recovery.score,
+      recalculated: true
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error recalculating recovery',
+      error: error.message
+    });
+  }
+};
+
+// 31. Get recovery trends
+exports.getRecoveryTrends = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // 7-day rolling average and trend analysis
+    const trends = await recoveryCalc.getTrends(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        average: trends.rollingAverage,
+        trend: trends.trend,
+        alert: trends.alert,
+        recommendation: trends.recommendation
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error analyzing recovery trends',
+      error: error.message
+    });
+  }
+};
+
+// 32. Get recovery prediction
+exports.getRecoveryPrediction = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // ML-based prediction of tomorrow's recovery
+    const prediction = await recoveryCalc.predictRecovery(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        predictedScore: prediction.score,
+        confidence: prediction.confidence,
+        factors: prediction.factors
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error predicting recovery',
+      error: error.message
+    });
+  }
+};
+
+// 33. Get recovery protocols
+exports.getRecoveryProtocols = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Recovery protocol recommendations
+    const protocols = await recoveryCalc.generateProtocols(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        protocols: protocols.recommendations,
+        effectiveness: protocols.effectiveness
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating recovery protocols',
+      error: error.message
+    });
+  }
+};
+
+// 34. Get recovery debt
+exports.getRecoveryDebt = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Recovery debt calculation
+    const debt = await recoveryCalc.calculateDebt(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        debt: debt.score,
+        daysToRecover: debt.daysToRecover,
+        recommendations: debt.recommendations
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating recovery debt',
+      error: error.message
+    });
+  }
+};
+
+// 35. Assess overtraining risk
+exports.getOvertrainingRisk = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const risk = await recoveryCalc.assessOvertrainingRisk(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        riskLevel: risk.level,
+        indicators: risk.indicators,
+        recommendations: risk.recommendations
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error assessing overtraining risk',
+      error: error.message
+    });
+  }
+};
+
+// 36. Assess training load
+exports.getTrainingLoad = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { days = 7 } = req.query;
+    
+    const load = await recoveryCalc.calculateTrainingLoad(userId, parseInt(days));
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        acuteLoad: load.acute,
+        chronicLoad: load.chronic,
+        ratio: load.ratio,
+        status: load.status
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error calculating training load',
+      error: error.message
+    });
+  }
+};
+
+// 37. Get recovery insights
+exports.getRecoveryInsights = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const insights = await recoveryCalc.generateInsights(userId);
+    
+    res.status(200).json({
+      success: true,
+      insights: insights.insights,
+      recommendations: insights.recommendations
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error generating recovery insights',
+      error: error.message
+    });
+  }
+};
+
+// 38. Get recovery dashboard
+exports.getRecoveryDashboard = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const dashboard = await recoveryCalc.getDashboard(userId);
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        currentScore: dashboard.currentScore,
+        trends: dashboard.trends,
+        trainingLoad: dashboard.trainingLoad,
+        recommendations: dashboard.recommendations,
+        insights: dashboard.insights
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error loading recovery dashboard',
+      error: error.message
+    });
+  }
+};
+
+module.exports = exports;

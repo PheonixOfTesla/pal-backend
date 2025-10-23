@@ -1,134 +1,200 @@
-// Src/routes/mars.js - GOAL ACHIEVEMENT ENGINE ROUTES
+/**
+ * MARS ROUTES - Goals, Habits, Milestones, Progress Tracking
+ * 
+ * Phoenix Backend - Planetary System Architecture
+ * File: Src/routes/mars.js
+ * Base Path: /api/mars
+ * Total Endpoints: 18
+ * 
+ * Controller: marsController.js
+ * Middleware: protect (JWT auth) on all routes
+ */
+
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
 const marsController = require('../controllers/marsController');
+const { protect } = require('../middleware/auth');
 
-// ============================================
-// MARS - GOAL ACHIEVEMENT ENGINE
-// ============================================
+// All routes require authentication
+router.use(protect);
 
-// Goal Intelligence
-router.post('/:userId/goals/generate', protect, marsController.generateSmartGoals);
-router.get('/:userId/goals/analysis', protect, marsController.analyzeGoalProgress);
-router.post('/:userId/goals/optimize', protect, marsController.optimizeGoals);
-router.get('/:userId/goals/conflicts', protect, marsController.detectGoalConflicts);
+// ========================================
+// GOAL MANAGEMENT (6 endpoints)
+// ========================================
 
-// Milestone Management
-router.post('/:userId/goals/:goalId/milestones', protect, marsController.createMilestones);
-router.get('/:userId/goals/:goalId/milestones', protect, marsController.getMilestones);
-router.put('/:userId/milestones/:milestoneId', protect, marsController.updateMilestone);
-router.post('/:userId/milestones/:milestoneId/complete', protect, marsController.completeMilestone);
+/**
+ * @route   POST /api/mars/goals
+ * @desc    Create a new goal
+ * @access  Private
+ * @body    { title, description, category, type, targetValue, currentValue, unit, targetDate, priority, milestones, habits }
+ */
+router.post('/goals', marsController.createGoal);
 
-// Progress Tracking
-router.get('/:userId/progress/dashboard', protect, marsController.getProgressDashboard);
-router.get('/:userId/progress/velocity', protect, marsController.getProgressVelocity);
-router.get('/:userId/progress/predictions', protect, marsController.getPredictedOutcomes);
-router.post('/:userId/progress/log', protect, marsController.logProgress);
+/**
+ * @route   GET /api/mars/goals
+ * @desc    Get all goals for user
+ * @access  Private
+ * @query   ?status=active&category=fitness&type=fitness&priority=high
+ */
+router.get('/goals', marsController.getGoals);
 
-// Habit Formation
-router.post('/:userId/habits/create', protect, marsController.createHabit);
-router.get('/:userId/habits', protect, marsController.getHabits);
-router.post('/:userId/habits/:habitId/check', protect, marsController.checkHabit);
-router.get('/:userId/habits/streaks', protect, marsController.getHabitStreaks);
-router.get('/:userId/habits/analysis', protect, marsController.analyzeHabitPatterns);
+/**
+ * @route   GET /api/mars/goals/:id
+ * @desc    Get single goal by ID
+ * @access  Private
+ */
+router.get('/goals/:id', marsController.getGoal);
 
-// Motivation System
-router.get('/:userId/motivation/score', protect, marsController.getMotivationScore);
-router.post('/:userId/motivation/boost', protect, marsController.triggerMotivationalBoost);
-router.get('/:userId/achievements', protect, marsController.getAchievements);
-router.get('/:userId/achievements/upcoming', protect, marsController.getUpcomingAchievements);
+/**
+ * @route   PUT /api/mars/goals/:id
+ * @desc    Update goal
+ * @access  Private
+ * @body    Goal fields to update
+ */
+router.put('/goals/:id', marsController.updateGoal);
 
-// Goal Correlation
-router.get('/:userId/correlations/health-goals', protect, marsController.correlateHealthWithGoals);
-router.get('/:userId/correlations/performance', protect, marsController.correlatePerformanceMetrics);
-router.get('/:userId/correlations/obstacles', protect, marsController.identifyObstacles);
-router.post('/:userId/correlations/analyze', protect, marsController.runCorrelationAnalysis);
+/**
+ * @route   DELETE /api/mars/goals/:id
+ * @desc    Delete goal
+ * @access  Private
+ */
+router.delete('/goals/:id', marsController.deleteGoal);
 
-// Accountability Features
-router.post('/:userId/accountability/partner', protect, marsController.addAccountabilityPartner);
-router.get('/:userId/accountability/partners', protect, marsController.getAccountabilityPartners);
-router.post('/:userId/accountability/check-in', protect, marsController.submitCheckIn);
-router.get('/:userId/accountability/reminders', protect, marsController.getReminders);
+/**
+ * @route   POST /api/mars/goals/:id/complete
+ * @desc    Complete goal
+ * @access  Private
+ * @body    { reflection?, achievements? }
+ */
+router.post('/goals/:id/complete', marsController.completeGoal);
 
-// Goal Templates
-router.get('/templates', protect, marsController.getGoalTemplates);
-router.get('/templates/:category', protect, marsController.getTemplatesByCategory);
-router.post('/:userId/goals/from-template', protect, marsController.createFromTemplate);
-router.post('/templates/custom', protect, checkRole(['specialist', 'admin']), marsController.createTemplate);
+// ========================================
+// AI GOAL GENERATION (3 endpoints)
+// ========================================
 
-// Gamification
-router.get('/:userId/gamification/level', protect, marsController.getUserLevel);
-router.get('/:userId/gamification/points', protect, marsController.getPoints);
-router.get('/:userId/gamification/badges', protect, marsController.getBadges);
-router.get('/:userId/gamification/leaderboard', protect, marsController.getLeaderboard);
-router.post('/:userId/gamification/challenge/:challengeId', protect, marsController.joinChallenge);
+/**
+ * @route   POST /api/mars/goals/generate-smart
+ * @desc    Generate SMART goal from vague input
+ * @access  Private
+ * @body    { generalGoal: "get stronger", domain: 'fitness' }
+ */
+router.post('/goals/generate-smart', marsController.generateSmartGoal);
 
-// AI Goal Coach
-router.post('/:userId/coach/chat', protect, marsController.chatWithGoalCoach);
-router.get('/:userId/coach/recommendations', protect, marsController.getCoachRecommendations);
-router.post('/:userId/coach/review', protect, marsController.requestGoalReview);
-router.get('/:userId/coach/insights', protect, marsController.getCoachInsights);
+/**
+ * @route   POST /api/mars/goals/suggest
+ * @desc    Get personalized goal suggestions
+ * @access  Private
+ * @body    { domain?: 'health' | 'fitness' | 'financial' | 'career' }
+ */
+router.post('/goals/suggest', marsController.getGoalSuggestions);
 
-// Goal Sharing & Social
-router.post('/:userId/goals/:goalId/share', protect, marsController.shareGoal);
-router.get('/:userId/social/feed', protect, marsController.getSocialFeed);
-router.post('/:userId/social/support/:goalId', protect, marsController.sendSupport);
-router.get('/:userId/social/supporters', protect, marsController.getSupporters);
+/**
+ * @route   GET /api/mars/goals/templates
+ * @desc    Get goal templates
+ * @access  Private
+ * @query   ?category=fitness&difficulty=intermediate
+ */
+router.get('/goals/templates', marsController.getGoalTemplates);
 
-// Analytics & Reports
-router.get('/:userId/reports/weekly', protect, marsController.getWeeklyReport);
-router.get('/:userId/reports/monthly', protect, marsController.getMonthlyReport);
-router.get('/:userId/reports/year-review', protect, marsController.getYearReview);
-router.post('/:userId/reports/custom', protect, marsController.generateCustomReport);
+// ========================================
+// PROGRESS TRACKING (4 endpoints)
+// ========================================
 
-// Documentation
-router.get('/', (req, res) => {
-  res.json({
-    planet: 'Mars',
-    domain: 'Goal Achievement Engine',
-    description: 'Intelligent goal setting, tracking, and achievement system',
-    features: [
-      'Smart goal generation',
-      'Milestone tracking',
-      'Habit formation',
-      'Progress predictions',
-      'Motivation scoring',
-      'Accountability partners',
-      'Gamification system',
-      'Goal correlation analysis',
-      'AI goal coaching',
-      'Social support network'
-    ],
-    endpoints: {
-      goals: {
-        POST_generate: '/:userId/goals/generate',
-        GET_analysis: '/:userId/goals/analysis',
-        POST_optimize: '/:userId/goals/optimize'
-      },
-      habits: {
-        POST_create: '/:userId/habits/create',
-        GET_all: '/:userId/habits',
-        POST_check: '/:userId/habits/:habitId/check',
-        GET_streaks: '/:userId/habits/streaks'
-      },
-      progress: {
-        GET_dashboard: '/:userId/progress/dashboard',
-        GET_velocity: '/:userId/progress/velocity',
-        GET_predictions: '/:userId/progress/predictions'
-      },
-      gamification: {
-        GET_level: '/:userId/gamification/level',
-        GET_badges: '/:userId/gamification/badges',
-        GET_leaderboard: '/:userId/gamification/leaderboard'
-      },
-      ai_coach: {
-        POST_chat: '/:userId/coach/chat',
-        GET_recommendations: '/:userId/coach/recommendations',
-        GET_insights: '/:userId/coach/insights'
-      }
-    }
-  });
-});
+/**
+ * @route   POST /api/mars/goals/:id/progress
+ * @desc    Log progress update
+ * @access  Private
+ * @body    { value, notes?, date? }
+ */
+router.post('/goals/:id/progress', marsController.logProgress);
+
+/**
+ * @route   GET /api/mars/goals/:id/progress
+ * @desc    Get progress history for goal
+ * @access  Private
+ */
+router.get('/goals/:id/progress', marsController.getProgress);
+
+/**
+ * @route   GET /api/mars/progress/velocity
+ * @desc    Get progress velocity
+ * @access  Private
+ * @query   ?goalId=:id
+ */
+router.get('/progress/velocity', marsController.getProgressVelocity);
+
+/**
+ * @route   GET /api/mars/progress/predictions
+ * @desc    Get progress predictions (ML-based)
+ * @access  Private
+ * @query   ?goalId=:id
+ */
+router.get('/progress/predictions', marsController.getProgressPredictions);
+
+/**
+ * @route   GET /api/mars/progress/bottlenecks
+ * @desc    Get bottleneck analysis
+ * @access  Private
+ * @query   ?goalId=:id
+ */
+router.get('/progress/bottlenecks', marsController.getBottlenecks);
+
+// ========================================
+// MILESTONES (2 endpoints)
+// ========================================
+
+/**
+ * @route   POST /api/mars/goals/:id/milestones
+ * @desc    Create milestone for goal
+ * @access  Private
+ * @body    { title, targetDate, value }
+ */
+router.post('/goals/:id/milestones', marsController.createMilestone);
+
+/**
+ * @route   POST /api/mars/milestones/:id/complete
+ * @desc    Complete milestone
+ * @access  Private
+ */
+router.post('/milestones/:id/complete', marsController.completeMilestone);
+
+// ========================================
+// HABITS (2 endpoints)
+// ========================================
+
+/**
+ * @route   POST /api/mars/habits
+ * @desc    Create habit
+ * @access  Private
+ * @body    { name, frequency, linkedGoalId? }
+ */
+router.post('/habits', marsController.createHabit);
+
+/**
+ * @route   POST /api/mars/habits/:id/log
+ * @desc    Log habit completion
+ * @access  Private
+ * @body    { completed: boolean, date? }
+ */
+router.post('/habits/:id/log', marsController.logHabit);
+
+// ========================================
+// MOTIVATIONAL SYSTEMS (2 endpoints)
+// ========================================
+
+/**
+ * @route   GET /api/mars/motivation/interventions
+ * @desc    Get motivational interventions
+ * @access  Private
+ */
+router.get('/motivation/interventions', marsController.getMotivationalInterventions);
+
+/**
+ * @route   POST /api/mars/motivation/boost
+ * @desc    Trigger motivation boost
+ * @access  Private
+ * @body    { goalId?, reason: 'struggling' | 'celebrating' | 'milestone' }
+ */
+router.post('/motivation/boost', marsController.triggerMotivationBoost);
 
 module.exports = router;
