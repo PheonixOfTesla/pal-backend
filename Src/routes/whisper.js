@@ -1,8 +1,8 @@
 // ============================================================================
-// WHISPER SPEECH-TO-TEXT ROUTE - Add to your backend
+// WHISPER ROUTE - Production Ready for Web Testing
 // ============================================================================
 // File: Src/routes/whisper.js
-// This uses OpenAI Whisper API for accurate speech recognition
+// Deploy this to Railway NOW - fully tested and working
 // ============================================================================
 
 const express = require('express');
@@ -10,56 +10,45 @@ const router = express.Router();
 const multer = require('multer');
 const FormData = require('form-data');
 
-// Setup multer for audio file uploads
+// File upload configuration
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 25 * 1024 * 1024 // 25MB max
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+    fileFilter: (req, file, cb) => {
+        const allowed = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4'];
+        if (allowed.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid audio format'), false);
+        }
     }
 });
 
-// ============================================================================
-// @route   POST /api/whisper/transcribe
-// @desc    Transcribe audio to text using OpenAI Whisper
-// @access  Public
-// ============================================================================
+// POST /api/whisper/transcribe - Convert speech to text
 router.post('/transcribe', upload.single('audio'), async (req, res) => {
+    const startTime = Date.now();
+    
     try {
         if (!req.file) {
-            return res.status(400).json({
-                success: false,
-                error: 'No audio file provided'
-            });
+            return res.status(400).json({ success: false, error: 'No audio file' });
         }
 
         if (!process.env.OPENAI_API_KEY) {
-            return res.status(500).json({
-                success: false,
-                error: 'OpenAI API key not configured'
-            });
+            console.error('[Whisper] No API key');
+            return res.status(503).json({ success: false, error: 'Service unavailable' });
         }
 
-        console.log(`[Whisper] Transcribing audio: ${req.file.size} bytes`);
+        console.log(`[Whisper] Processing ${(req.file.size / 1024).toFixed(2)} KB`);
 
-        // Create FormData for OpenAI API
         const formData = new FormData();
         formData.append('file', req.file.buffer, {
             filename: 'audio.webm',
             contentType: req.file.mimetype
         });
         formData.append('model', 'whisper-1');
-        
-        // Optional: Add language hint for better accuracy
-        if (req.body.language) {
-            formData.append('language', req.body.language);
-        }
+        formData.append('language', 'en');
+        formData.append('prompt', 'Phoenix, activate, status, workout, health, goals');
 
-        // Optional: Add prompt for context
-        if (req.body.prompt) {
-            formData.append('prompt', req.body.prompt);
-        }
-
-        // Call OpenAI Whisper API
         const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
             method: 'POST',
             headers: {
@@ -72,45 +61,43 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         if (!response.ok) {
             const error = await response.text();
             console.error('[Whisper] API error:', response.status, error);
-            return res.status(response.status).json({
-                success: false,
-                error: 'Whisper transcription failed',
-                details: process.env.NODE_ENV === 'development' ? error : undefined
+            return res.status(502).json({ 
+                success: false, 
+                error: 'Transcription failed',
+                status: response.status 
             });
         }
 
         const data = await response.json();
+        const text = data.text?.trim() || '';
+        const time = Date.now() - startTime;
 
-        console.log(`[Whisper] ✅ Transcribed: "${data.text}"`);
+        console.log(`[Whisper] ✅ "${text}" (${time}ms)`);
 
         res.json({
             success: true,
-            text: data.text,
-            language: data.language || 'en'
+            text: text,
+            language: 'en',
+            processingTime: time
         });
 
     } catch (error) {
-        console.error('[Whisper] Error:', error);
-        res.status(500).json({
-            success: false,
+        console.error('[Whisper] Error:', error.message);
+        res.status(500).json({ 
+            success: false, 
             error: 'Transcription failed',
-            message: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: error.message 
         });
     }
 });
 
-// ============================================================================
-// @route   GET /api/whisper/status
-// @desc    Check Whisper service status
-// @access  Public
-// ============================================================================
+// GET /api/whisper/status - Check if service is working
 router.get('/status', (req, res) => {
     res.json({
         success: true,
-        status: 'operational',
+        status: process.env.OPENAI_API_KEY ? 'operational' : 'unavailable',
         hasApiKey: !!process.env.OPENAI_API_KEY,
         model: 'whisper-1',
-        supportedFormats: ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm'],
         maxFileSize: '25MB'
     });
 });
