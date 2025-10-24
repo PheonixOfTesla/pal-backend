@@ -8,8 +8,8 @@
 // - Mars (Goals & Habits) - 20 endpoints
 // - Jupiter (Financial Management) - 16 endpoints
 // - Saturn (Legacy Planning) - 12 endpoints
-// - Phoenix (AI Companion) - 76 endpoints
-// TOTAL: 261 API endpoints
+// - Phoenix (AI Companion) - 81 endpoints (includes SMS/Budget)
+// TOTAL: 267 API endpoints + Twilio Webhooks
 // ============================================================================
 
 require('dotenv').config();
@@ -97,7 +97,7 @@ mongoose.connect(MONGODB_URI, {
 })
 .then(() => {
   console.log('✅ MongoDB Connected Successfully');
-  console.log(`🔗 Database: ${mongoose.connection.name}`);
+  console.log(`📍 Database: ${mongoose.connection.name}`);
 })
 .catch((err) => {
   console.error('❌ MongoDB Connection Error:', err.message);
@@ -133,7 +133,10 @@ const earthRoutes = require('./Src/routes/earth');          // Calendar & Energy
 const marsRoutes = require('./Src/routes/mars');            // Goals & Habits (18 endpoints)
 const jupiterRoutes = require('./Src/routes/jupiter');      // Financial Management (16 endpoints)
 const saturnRoutes = require('./Src/routes/saturn');        // Legacy Planning (12 endpoints)
-const phoenixRoutes = require('./Src/routes/phoenix');      // AI Companion (76 endpoints)
+const phoenixRoutes = require('./Src/routes/phoenix');      // AI Companion (81 endpoints)
+
+// Twilio Webhooks (Public routes - no auth required)
+const twilioWebhooks = require('./Src/routes/twilioWebhooks'); // Twilio voice & SMS callbacks
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT
@@ -157,9 +160,10 @@ app.get('/health', (req, res) => {
       mars: '18 endpoints (Goals & Habits)',
       jupiter: '16 endpoints (Financial)',
       saturn: '12 endpoints (Legacy)',
-      phoenix: '76 endpoints (AI Companion)',
-      total_routes: 10,
-      total_endpoints: '259+'
+      phoenix: '81 endpoints (AI Companion + SMS/Budget)',
+      webhooks: 'Twilio voice & SMS callbacks',
+      total_routes: 11,
+      total_endpoints: '267+'
     }
   };
   res.status(200).json(healthCheck);
@@ -200,13 +204,17 @@ app.use('/api/earth', earthRoutes);         // Calendar & Energy - 11 endpoints
 app.use('/api/mars', marsRoutes);           // Goals & Habits - 18 endpoints
 app.use('/api/jupiter', jupiterRoutes);     // Financial Management - 16 endpoints
 app.use('/api/saturn', saturnRoutes);       // Legacy Planning - 12 endpoints
-app.use('/api/phoenix', phoenixRoutes);     // AI Companion - 76 endpoints
+app.use('/api/phoenix', phoenixRoutes);     // AI Companion - 81 endpoints
 
-console.log('✅ All 10 routes mounted successfully');
+// Twilio Webhooks (Public - no authentication)
+app.use('/api/webhooks/twilio', twilioWebhooks); // Twilio callbacks
+
+console.log('✅ All 11 routes mounted successfully');
 console.log('   🔐 Auth, Users & Subscriptions (3 routes)');
 console.log('   🪐 7 Planetary Systems - Fully Consolidated');
 console.log('   📡 Mercury includes: Wearables & Recovery');
-console.log('📡 Total API Endpoints: 259+');
+console.log('   📞 Twilio Webhooks - Voice & SMS callbacks');
+console.log('📡 Total API Endpoints: 267+');
 
 // ============================================================================
 // ERROR HANDLING MIDDLEWARE
@@ -295,8 +303,9 @@ const server = app.listen(PORT, () => {
   console.log('   ♂ Mars     - Goals & Habits (18)');
   console.log('   ♃ Jupiter  - Financial Management (16)');
   console.log('   ♄ Saturn   - Legacy Planning (12)');
-  console.log('   🔥 Phoenix  - AI Companion (76)');
-  console.log(`\n📡 Total: 10 Route Files | 259+ Endpoints`);
+  console.log('   🔥 Phoenix  - AI Companion (81)');
+  console.log('   📞 Webhooks - Twilio callbacks');
+  console.log(`\n📡 Total: 11 Route Files | 267+ Endpoints`);
   console.log(`\n✅ Server ready at: http://localhost:${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
   console.log('='.repeat(60) + '\n');
