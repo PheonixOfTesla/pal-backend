@@ -12,7 +12,80 @@ const smsAgent = require('../services/phoenix/smsAgent');
 const VoiceSession = require('../models/phoenix/VoiceSession');
 
 // ============================================
-// VOICE/CALL WEBHOOKS
+// MAIN VOICE/CALL WEBHOOK
+// ============================================
+
+/**
+ * @route   POST /api/webhooks/twilio/voice
+ * @desc    Handle incoming voice calls
+ * @access  Public (Twilio webhook)
+ */
+router.post('/voice', async (req, res) => {
+  try {
+    const from = req.body.From;
+    const callSid = req.body.CallSid;
+    
+    console.log('📞 Incoming call from:', from, 'CallSid:', callSid);
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Hello! You've reached Phoenix AI. How can I help you today?</Say>
+  <Record maxLength="30" finishOnKey="#" />
+  <Say voice="Polly.Joanna">Thank you for your message. I'll process that and get back to you. Goodbye.</Say>
+  <Hangup/>
+</Response>`;
+    
+    res.type('text/xml').send(twiml);
+  } catch (error) {
+    console.error('Voice handler error:', error);
+    res.status(500).type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>An error occurred. Please try again later.</Say>
+  <Hangup/>
+</Response>`);
+  }
+});
+
+// ============================================
+// MAIN SMS WEBHOOK
+// ============================================
+
+/**
+ * @route   POST /api/webhooks/twilio/sms
+ * @desc    Handle incoming SMS messages
+ * @access  Public (Twilio webhook)
+ */
+router.post('/sms', async (req, res) => {
+  try {
+    const from = req.body.From;
+    const body = req.body.Body;
+    const messageSid = req.body.MessageSid;
+    
+    console.log('📱 Incoming SMS from:', from, 'Message:', body, 'MessageSid:', messageSid);
+    
+    // Pass to smsAgent to handle incoming message
+    try {
+      await smsAgent.handleIncomingSMS(from, body, messageSid);
+    } catch (agentError) {
+      console.error('SMS agent error:', agentError);
+      // Continue even if agent fails
+    }
+    
+    // Send auto-reply
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Thank you for your message! Phoenix AI is processing your request and will respond shortly.</Message>
+</Response>`;
+    
+    res.type('text/xml').send(twiml);
+  } catch (error) {
+    console.error('SMS handler error:', error);
+    res.status(500).send('Error');
+  }
+});
+
+// ============================================
+// ADDITIONAL VOICE WEBHOOKS
 // ============================================
 
 /**
@@ -31,13 +104,11 @@ router.post('/voice/twiml/:sessionId', async (req, res) => {
     
     if (!session) {
       console.error('Session not found:', sessionId);
-      return res.status(404).type('text/xml').send(`
-        <?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-          <Say>Sorry, this session could not be found.</Say>
-          <Hangup/>
-        </Response>
-      `);
+      return res.status(404).type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Sorry, this session could not be found.</Say>
+  <Hangup/>
+</Response>`);
     }
 
     // Generate TwiML response
@@ -48,13 +119,11 @@ router.post('/voice/twiml/:sessionId', async (req, res) => {
 
   } catch (error) {
     console.error('TwiML generation error:', error);
-    res.status(500).type('text/xml').send(`
-      <?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say>An error occurred. Please try again later.</Say>
-        <Hangup/>
-      </Response>
-    `);
+    res.status(500).type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>An error occurred. Please try again later.</Say>
+  <Hangup/>
+</Response>`);
   }
 });
 
@@ -70,28 +139,21 @@ router.post('/voice/gather/:sessionId', async (req, res) => {
     
     console.log('🗣️  Speech input received:', speechResult);
     
-    // Here you would process the speech with OpenAI Realtime API
-    // For now, just acknowledge and end
-    
-    const twiml = `
-      <?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say>Thank you. I'll relay this information. Goodbye.</Say>
-        <Hangup/>
-      </Response>
-    `;
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Thank you. I'll relay this information. Goodbye.</Say>
+  <Hangup/>
+</Response>`;
     
     res.type('text/xml').send(twiml);
 
   } catch (error) {
     console.error('Gather handler error:', error);
-    res.status(500).type('text/xml').send(`
-      <?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say>An error occurred.</Say>
-        <Hangup/>
-      </Response>
-    `);
+    res.status(500).type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>An error occurred.</Say>
+  <Hangup/>
+</Response>`);
   }
 });
 
@@ -147,7 +209,7 @@ router.post('/voice/recording/:sessionId', async (req, res) => {
 });
 
 // ============================================
-// SMS WEBHOOKS
+// ADDITIONAL SMS WEBHOOKS
 // ============================================
 
 /**
@@ -174,7 +236,7 @@ router.post('/sms/status/:actionId', async (req, res) => {
 
 /**
  * @route   POST /api/webhooks/twilio/sms/incoming
- * @desc    Handle incoming SMS messages
+ * @desc    Handle incoming SMS messages (alias)
  * @access  Public (Twilio webhook)
  */
 router.post('/sms/incoming', async (req, res) => {
@@ -183,18 +245,15 @@ router.post('/sms/incoming', async (req, res) => {
     const body = req.body.Body;
     const messageSid = req.body.MessageSid;
     
-    console.log('📱 Incoming SMS from:', from, 'Message:', body);
+    console.log('📱 Incoming SMS (via /incoming) from:', from, 'Message:', body);
     
     // Pass to smsAgent to handle incoming message
     await smsAgent.handleIncomingSMS(from, body, messageSid);
     
-    // Optionally send auto-reply
-    const twiml = `
-      <?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Message>Thank you for your message. Phoenix AI will respond shortly.</Message>
-      </Response>
-    `;
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Thank you for your message. Phoenix AI will respond shortly.</Message>
+</Response>`;
     
     res.type('text/xml').send(twiml);
 
@@ -220,12 +279,14 @@ router.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: {
       voice: [
+        'POST /voice - Main incoming call handler',
         'POST /voice/twiml/:sessionId',
         'POST /voice/gather/:sessionId',
         'POST /voice/status/:sessionId',
         'POST /voice/recording/:sessionId'
       ],
       sms: [
+        'POST /sms - Main incoming SMS handler',
         'POST /sms/status/:actionId',
         'POST /sms/incoming'
       ]
