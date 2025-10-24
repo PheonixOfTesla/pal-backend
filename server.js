@@ -33,6 +33,9 @@ const PORT = process.env.PORT || 5000;
 // SECURITY MIDDLEWARE
 // ============================================================================
 
+// Trust proxy - REQUIRED for Railway (behind reverse proxy)
+app.set('trust proxy', 1);
+
 // Helmet - Security headers
 app.use(helmet());
 
@@ -46,13 +49,14 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Rate Limiting - Prevent brute force attacks
+// Rate Limiting - Prevent brute force attacks (skip for Twilio webhooks)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // Limit each IP to 1000 requests per windowMs
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.startsWith('/api/webhooks/twilio') // Skip rate limit for Twilio webhooks
 });
 app.use('/api/', limiter);
 
