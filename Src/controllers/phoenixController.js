@@ -11,6 +11,7 @@ const CorrelationPattern = require('../models/phoenix/CorrelationPattern');
 const Prediction = require('../models/phoenix/Prediction');
 const Intervention = require('../models/phoenix/Intervention');
 const BehaviorPattern = require('../models/phoenix/BehaviorPattern');
+const smsAgent = require('../services/phoenix/smsAgent');
 const User = require('../models/User');
 
 // Services
@@ -2530,6 +2531,128 @@ exports.deleteAutomation = async (req, res) => {
     });
   }
 };
+
+// --------- SMS/Text Messages (NEW - 3 methods) ---------
+
+/**
+ * @desc    Send SMS/Text message
+ * @route   POST /api/phoenix/butler/sms
+ * @access  Private
+ */
+exports.sendSMS = async (req, res) => {
+  try {
+    const { phoneNumber, message } = req.body;
+
+    if (!phoneNumber || !message) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Phone number and message are required' 
+      });
+    }
+
+    const sms = await smsAgent.sendSMS({
+      userId: req.user.id,
+      phoneNumber,
+      message
+    });
+
+    res.status(201).json({
+      success: true,
+      data: sms
+    });
+
+  } catch (error) {
+    console.error('Send SMS error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to send SMS' 
+    });
+  }
+};
+
+/**
+ * @desc    Get SMS history
+ * @route   GET /api/phoenix/butler/sms
+ * @access  Private
+ */
+exports.getSMSHistory = async (req, res) => {
+  try {
+    const { days = 90, limit = 50 } = req.query;
+
+    const history = await smsAgent.getSMSHistory(
+      req.user.id,
+      parseInt(days),
+      parseInt(limit)
+    );
+
+    res.status(200).json({
+      success: true,
+      count: history.length,
+      data: history
+    });
+
+  } catch (error) {
+    console.error('Get SMS history error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to retrieve SMS history' 
+    });
+  }
+};
+
+/**
+ * @desc    Get/Update budget settings
+ * @route   GET/PUT /api/phoenix/butler/budget
+ * @access  Private
+ */
+exports.manageBudget = async (req, res) => {
+  try {
+    if (req.method === 'GET') {
+      const user = await User.findById(req.user.id).select('phoenixSettings');
+      
+      res.status(200).json({
+        success: true,
+        data: user.phoenixSettings?.callBudget || {
+          enabled: false,
+          monthlyLimit: 0,
+          currentSpent: 0
+        }
+      });
+    } else {
+      // PUT - Update budget
+      const { enabled, monthlyLimit, alertThreshold, autoRecharge } = req.body;
+
+      const user = await User.findByIdAndUpdate(
+        req.user.id,
+        {
+          'phoenixSettings.callBudget': {
+            enabled: enabled !== undefined ? enabled : true,
+            monthlyLimit: monthlyLimit || 50.00,
+            currentSpent: 0,
+            resetDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+            alertThreshold: alertThreshold || 0.80,
+            autoRecharge: autoRecharge || { enabled: false, amount: 50.00, trigger: 5.00 }
+          }
+        },
+        { new: true }
+      ).select('phoenixSettings');
+
+      res.status(200).json({
+        success: true,
+        message: 'Budget settings updated',
+        data: user.phoenixSettings.callBudget
+      });
+    }
+
+  } catch (error) {
+    console.error('Manage budget error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to manage budget' 
+    });
+  }
+};
+
 
 // ========================================
 // Export all methods
