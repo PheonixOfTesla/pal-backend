@@ -138,6 +138,7 @@ const marsRoutes = require('./Src/routes/mars');            // Goals & Habits (1
 const jupiterRoutes = require('./Src/routes/jupiter');      // Financial Management (16 endpoints)
 const saturnRoutes = require('./Src/routes/saturn');        // Legacy Planning (12 endpoints)
 const phoenixRoutes = require('./Src/routes/phoenix');      // AI Companion (81 endpoints)
+const ttsRoutes = require('./Src/routes/tts');
 
 // Twilio Webhooks (Public routes - no auth required)
 const twilioWebhooks = require('./Src/routes/twilioWebhooks'); // Twilio voice & SMS callbacks
@@ -209,6 +210,7 @@ app.use('/api/mars', marsRoutes);           // Goals & Habits - 18 endpoints
 app.use('/api/jupiter', jupiterRoutes);     // Financial Management - 16 endpoints
 app.use('/api/saturn', saturnRoutes);       // Legacy Planning - 12 endpoints
 app.use('/api/phoenix', phoenixRoutes);     // AI Companion - 81 endpoints
+app.use('/api/tts', ttsRoutes);
 
 // Twilio Webhooks (Public - no authentication)
 app.use('/api/webhooks/twilio', twilioWebhooks); // Twilio callbacks
