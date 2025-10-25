@@ -1,8 +1,5 @@
 // ============================================================================
-// WHISPER ROUTE - Production Ready for Web Testing
-// ============================================================================
-// File: Src/routes/whisper.js
-// Deploy this to Railway NOW - fully tested and working
+// WHISPER ROUTE - FIXED FOR SAFARI/MP4 SUPPORT
 // ============================================================================
 
 const express = require('express');
@@ -15,8 +12,8 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
     fileFilter: (req, file, cb) => {
-        const allowed = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4'];
-        if (allowed.includes(file.mimetype)) {
+        const allowed = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/mp4', 'audio/ogg'];
+        if (allowed.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
             cb(null, true);
         } else {
             cb(new Error('Invalid audio format'), false);
@@ -38,16 +35,22 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
             return res.status(503).json({ success: false, error: 'Service unavailable' });
         }
 
-        console.log(`[Whisper] Processing ${(req.file.size / 1024).toFixed(2)} KB`);
+        console.log(`[Whisper] Processing ${(req.file.size / 1024).toFixed(2)} KB (${req.file.mimetype})`);
+
+        // Determine proper file extension based on mime type
+        let extension = 'webm';
+        if (req.file.mimetype.includes('mp4')) extension = 'mp4';
+        else if (req.file.mimetype.includes('wav')) extension = 'wav';
+        else if (req.file.mimetype.includes('mp3') || req.file.mimetype.includes('mpeg')) extension = 'mp3';
+        else if (req.file.mimetype.includes('ogg')) extension = 'ogg';
 
         const formData = new FormData();
         formData.append('file', req.file.buffer, {
-            filename: 'audio.webm',
+            filename: `audio.${extension}`,
             contentType: req.file.mimetype
         });
         formData.append('model', 'whisper-1');
         formData.append('language', 'en');
-        formData.append('prompt', 'Phoenix, activate, status, workout, health, goals');
 
         const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
             method: 'POST',
@@ -64,6 +67,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
             return res.status(502).json({ 
                 success: false, 
                 error: 'Transcription failed',
+                details: error,
                 status: response.status 
             });
         }
