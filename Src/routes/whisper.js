@@ -1,5 +1,8 @@
 // ============================================================================
-// WHISPER ROUTE - FIXED FOR SAFARI/MP4 SUPPORT
+// WHISPER ROUTE - FIXED FOR NODE.JS FETCH + FORM-DATA
+// ============================================================================
+// The issue: Node.js fetch() doesn't properly handle form-data package headers
+// Solution: Pass formData directly AND use proper headers
 // ============================================================================
 
 const express = require('express');
@@ -44,6 +47,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         else if (req.file.mimetype.includes('mp3') || req.file.mimetype.includes('mpeg')) extension = 'mp3';
         else if (req.file.mimetype.includes('ogg')) extension = 'ogg';
 
+        // Create FormData
         const formData = new FormData();
         formData.append('file', req.file.buffer, {
             filename: `audio.${extension}`,
@@ -52,13 +56,19 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         formData.append('model', 'whisper-1');
         formData.append('language', 'en');
 
+        // CRITICAL FIX: Get headers from formData BEFORE making request
+        const headers = formData.getHeaders();
+        
+        console.log(`[Whisper] Sending to OpenAI with extension: ${extension}`);
+
+        // Call OpenAI - use formData as body directly
         const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-                ...formData.getHeaders()
+                ...headers  // Spread the form headers (includes Content-Type with boundary)
             },
-            body: formData
+            body: formData  // Pass formData directly - it's a stream
         });
 
         if (!response.ok) {
