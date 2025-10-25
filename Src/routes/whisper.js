@@ -1,13 +1,14 @@
 // ============================================================================
-// WHISPER ROUTE - FIXED FOR NODE.JS FETCH + FORM-DATA
+// WHISPER ROUTE - USING AXIOS (Actually Works with FormData)
 // ============================================================================
-// The issue: Node.js fetch() doesn't properly handle form-data package headers
-// Solution: Pass formData directly AND use proper headers
+// Problem: Node.js fetch() + form-data package = broken
+// Solution: Use axios which properly handles multipart/form-data
 // ============================================================================
 
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const axios = require('axios');
 const FormData = require('form-data');
 
 // File upload configuration
@@ -47,7 +48,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         else if (req.file.mimetype.includes('mp3') || req.file.mimetype.includes('mpeg')) extension = 'mp3';
         else if (req.file.mimetype.includes('ogg')) extension = 'ogg';
 
-        // Create FormData
+        // Create FormData - this works properly with axios
         const formData = new FormData();
         formData.append('file', req.file.buffer, {
             filename: `audio.${extension}`,
@@ -56,34 +57,23 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         formData.append('model', 'whisper-1');
         formData.append('language', 'en');
 
-        // CRITICAL FIX: Get headers from formData BEFORE making request
-        const headers = formData.getHeaders();
-        
         console.log(`[Whisper] Sending to OpenAI with extension: ${extension}`);
 
-        // Call OpenAI - use formData as body directly
-        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-                ...headers  // Spread the form headers (includes Content-Type with boundary)
-            },
-            body: formData  // Pass formData directly - it's a stream
-        });
+        // Use axios instead of fetch - it properly handles FormData
+        const response = await axios.post(
+            'https://api.openai.com/v1/audio/transcriptions',
+            formData,
+            {
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                    ...formData.getHeaders()
+                },
+                maxBodyLength: Infinity,
+                maxContentLength: Infinity
+            }
+        );
 
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('[Whisper] API error:', response.status, error);
-            return res.status(502).json({ 
-                success: false, 
-                error: 'Transcription failed',
-                details: error,
-                status: response.status 
-            });
-        }
-
-        const data = await response.json();
-        const text = data.text?.trim() || '';
+        const text = response.data.text?.trim() || '';
         const time = Date.now() - startTime;
 
         console.log(`[Whisper] ✅ "${text}" (${time}ms)`);
@@ -96,11 +86,11 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Whisper] Error:', error.message);
+        console.error('[Whisper] Error:', error.response?.data || error.message);
         res.status(500).json({ 
             success: false, 
             error: 'Transcription failed',
-            message: error.message 
+            message: error.response?.data?.error || error.message
         });
     }
 });
